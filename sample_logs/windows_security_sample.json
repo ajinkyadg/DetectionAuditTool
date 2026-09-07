@@ -1,0 +1,92 @@
+[
+  {
+    "EventID": 4625,
+    "TimeCreated": "2026-01-15T09:00:00+00:00",
+    "TargetUserName": "jsmith",
+    "TargetSid": "S-1-0-0",
+    "IpAddress": "203.0.113.55",
+    "LogonType": 3,
+    "WorkstationName": "WKSTN01",
+    "FailureReason": "%%2313"
+  },
+  {
+    "EventID": 4625,
+    "TimeCreated": "2026-01-15T09:00:30+00:00",
+    "TargetUserName": "jsmith",
+    "TargetSid": "S-1-0-0",
+    "IpAddress": "203.0.113.55",
+    "LogonType": 3,
+    "WorkstationName": "WKSTN01",
+    "FailureReason": "%%2313"
+  },
+  {
+    "EventID": 4625,
+    "TimeCreated": "2026-01-15T09:01:00+00:00",
+    "TargetUserName": "jsmith",
+    "IpAddress": "203.0.113.55",
+    "LogonType": 3,
+    "FailureReason": "%%2313"
+  },
+  {
+    "EventID": 4625,
+    "TimeCreated": "2026-01-15T09:01:30+00:00",
+    "TargetUserName": "jsmith",
+    "IpAddress": "203.0.113.55",
+    "LogonType": 3,
+    "FailureReason": "%%2313"
+  },
+  {
+    "EventID": 4625,
+    "TimeCreated": "2026-01-15T09:02:00+00:00",
+    "TargetUserName": "jsmith",
+    "IpAddress": "203.0.113.55",
+    "LogonType": 3,
+    "FailureReason": "%%2313"
+  },
+  {
+    "EventID": 4625,
+    "TimeCreated": "2026-01-15T09:02:30+00:00",
+    "TargetUserName": "jsmith",
+    "IpAddress": "203.0.113.55",
+    "LogonType": 3,
+    "FailureReason": "%%2313"
+  },
+  {
+    "EventID": 4624,
+    "TimeCreated": "2026-01-15T09:03:00+00:00",
+    "TargetUserName": "jsmith",
+    "TargetSid": "S-1-5-21-3623811015-3361044348-30300820-1104",
+    "IpAddress": "203.0.113.55",
+    "LogonType": 3,
+    "WorkstationName": "WKSTN01"
+  },
+  {
+    "EventID": 4624,
+    "TimeCreated": "2026-01-15T10:00:00+00:00",
+    "TargetUserName": "svc-fileshare",
+    "TargetSid": "S-1-5-21-3623811015-3361044348-30300820-2201",
+    "IpAddress": "10.0.4.12",
+    "LogonType": 3,
+    "WorkstationName": "FS01",
+    "AuthenticationPackageName": "NTLM",
+    "LmPackageName": "NTLM V2"
+  },
+  {
+    "EventID": 4720,
+    "TimeCreated": "2026-01-15T11:15:00+00:00",
+    "SubjectUserName": "helpdesk1",
+    "SubjectUserSid": "S-1-5-21-3623811015-3361044348-30300820-1500",
+    "TargetUserName": "temp-contractor",
+    "TargetSid": "S-1-5-21-3623811015-3361044348-30300820-3300"
+  },
+  {
+    "EventID": 4732,
+    "TimeCreated": "2026-01-15T11:16:00+00:00",
+    "SubjectUserName": "helpdesk1",
+    "SubjectUserSid": "S-1-5-21-3623811015-3361044348-30300820-1500",
+    "TargetUserName": "WKSTN07",
+    "MemberName": "temp-contractor",
+    "MemberSid": "S-1-5-21-3623811015-3361044348-30300820-3300",
+    "GroupName": "Administrators"
+  }
+]

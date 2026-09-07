@@ -1,0 +1,36 @@
+id: WIN-1004
+title: New User Account Created
+description: >
+  Detects creation of a new local or domain user account (EventID 4720).
+  On its own this is low severity (routine IT/HR activity); it becomes high
+  severity when the same account is added to a privileged group shortly
+  after (see WIN-1003) or is created outside change-management windows.
+level: low
+mitre_attack:
+  - T1136.001
+  - T1136.002
+logsource:
+  product: windows
+  service: security
+event_ids:
+  - "4720"
+detection_type: selection
+selection:
+  EventID: 4720
+required_fields:
+  - SubjectUserName
+  - SubjectUserSid
+  - TargetUserName
+  - TargetSid
+false_positives:
+  - Routine account provisioning by IT/HR - correlate with your ticketing system
+references:
+  - https://attack.mitre.org/techniques/T1136/001/
+audit_policy:
+  gpo_path: >
+    Computer Configuration > Windows Settings > Security Settings > Advanced
+    Audit Policy Configuration > Account Management > Audit User Account Management
+  command: auditpol /set /subcategory:"User Account Management" /success:enable /failure:enable
+  notes: >
+    Enable on all domain controllers, not just member servers, so account
+    creation is visible even when it happens directly against AD.

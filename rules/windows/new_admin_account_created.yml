@@ -1,0 +1,40 @@
+id: WIN-1003
+title: New User Added to a Privileged Local Group
+description: >
+  Detects a new member being added to a security-enabled local group
+  (EventID 4732), which covers the common post-compromise persistence step of
+  adding an attacker-controlled or newly created account to the local
+  Administrators group.
+level: high
+mitre_attack:
+  - T1098
+  - T1136.001
+  - T1078
+logsource:
+  product: windows
+  service: security
+event_ids:
+  - "4732"
+detection_type: selection
+selection:
+  EventID: 4732
+required_fields:
+  - SubjectUserName
+  - SubjectUserSid
+  - TargetUserName
+  - MemberName
+  - MemberSid
+  - GroupName
+false_positives:
+  - Legitimate IT/helpdesk group membership changes - correlate with your change ticket source
+references:
+  - https://attack.mitre.org/techniques/T1098/
+audit_policy:
+  gpo_path: >
+    Computer Configuration > Windows Settings > Security Settings > Advanced
+    Audit Policy Configuration > Account Management > Audit Security Group Management
+  command: auditpol /set /subcategory:"Security Group Management" /success:enable /failure:enable
+  notes: >
+    Disabled by default on older baselines - explicitly enable it. Pair with
+    WIN-1004 (4720, new account creation) to catch "create account then
+    add to admins" attack chains end to end.

@@ -1,0 +1,46 @@
+id: WIN-1005
+title: Suspicious NTLM Network Logon (Possible Pass-the-Hash)
+description: >
+  Detects a successful network logon (EventID 4624, LogonType 3) authenticated
+  via NTLM rather than Kerberos, which is one of the strongest low-noise
+  indicators of pass-the-hash / pass-the-ticket lateral movement in a
+  Kerberos-default AD environment.
+level: high
+mitre_attack:
+  - T1550.002
+  - T1021.002
+logsource:
+  product: windows
+  service: security
+event_ids:
+  - "4624"
+detection_type: selection
+selection:
+  EventID: 4624
+  LogonType: 3
+  AuthenticationPackageName: NTLM
+required_fields:
+  - TargetUserName
+  - TargetSid
+  - IpAddress
+  - WorkstationName
+  - AuthenticationPackageName
+  - LmPackageName
+false_positives:
+  - Legacy applications/services that don't support Kerberos (file shares, older printers)
+  - Logons across a domain trust that doesn't support Kerberos
+references:
+  - https://attack.mitre.org/techniques/T1550/002/
+audit_policy:
+  gpo_path: >
+    Computer Configuration > Windows Settings > Security Settings > Advanced
+    Audit Policy Configuration > Logon/Logoff > Audit Logon; plus Computer
+    Configuration > Administrative Templates > Network > Network security >
+    Restrict NTLM > Audit NTLM authentication in this domain
+  command: auditpol /set /subcategory:"Logon" /success:enable /failure:enable
+  notes: >
+    AuthenticationPackageName and LmPackageName are present on 4624 by
+    default, but if you want domain-wide NTLM usage auditing (recommended for
+    baselining "who still uses NTLM" before you can alert on it), also enable
+    the NTLM auditing GPO above so denied/allowed NTLM traffic is logged as
+    EventID 8004.

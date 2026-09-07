@@ -1,0 +1,44 @@
+id: AWS-3001
+title: AWS Console Login Brute Force
+description: >
+  Detects repeated failed AWS Management Console login attempts (CloudTrail
+  ConsoleLogin events with errorMessage indicating failed authentication)
+  against the same account/source IP within a short window.
+level: high
+mitre_attack:
+  - T1110
+  - T1078.004
+logsource:
+  category: cloudtrail
+  product: aws
+event_ids:
+  - "ConsoleLogin"
+detection_type: threshold
+selection:
+  eventName: ConsoleLogin
+  responseElements.ConsoleLogin: Failure
+groupby: sourceIPAddress
+timeframe_minutes: 10
+threshold: 5
+condition: gte
+required_fields:
+  - sourceIPAddress
+  - userIdentity.arn
+  - userIdentity.accountId
+  - additionalEventData.MFAUsed
+false_positives:
+  - Users behind a corporate NAT/VPN mistyping MFA repeatedly
+references:
+  - https://attack.mitre.org/techniques/T1110/
+audit_policy:
+  gpo_path: CloudTrail console / Organizations trail
+  command: >
+    aws cloudtrail create-trail --name org-trail --is-multi-region-trail
+    --include-global-service-events
+    aws cloudtrail put-event-selectors --trail-name org-trail
+    --event-selectors '[{"ReadWriteType":"All","IncludeManagementEvents":true}]'
+  notes: >
+    ConsoleLogin events are only recorded if a CloudTrail trail with
+    management events enabled exists and covers the region. For near-real-time
+    alerting (not just S3-delivered logs), also enable CloudWatch Logs
+    integration on the trail and build a metric filter on this event pattern.

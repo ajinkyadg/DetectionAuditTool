@@ -1,0 +1,14 @@
+[
+  {"timestamp": "2026-01-15T09:00:00+00:00", "process": "sshd", "action": "auth_fail", "src_ip": "198.51.100.23", "user": "root", "port": 51322},
+  {"timestamp": "2026-01-15T09:00:05+00:00", "process": "sshd", "action": "auth_fail", "src_ip": "198.51.100.23", "user": "root", "port": 51330},
+  {"timestamp": "2026-01-15T09:00:10+00:00", "process": "sshd", "action": "auth_fail", "src_ip": "198.51.100.23", "port": 51341},
+  {"timestamp": "2026-01-15T09:00:15+00:00", "process": "sshd", "action": "auth_fail", "src_ip": "198.51.100.23", "port": 51350},
+  {"timestamp": "2026-01-15T09:00:20+00:00", "process": "sshd", "action": "auth_fail", "src_ip": "198.51.100.23", "port": 51361},
+  {"timestamp": "2026-01-15T09:00:25+00:00", "process": "sshd", "action": "auth_fail", "src_ip": "198.51.100.23", "port": 51372},
+  {"timestamp": "2026-01-15T09:00:30+00:00", "process": "sshd", "action": "auth_fail", "src_ip": "198.51.100.23", "port": 51383},
+  {"timestamp": "2026-01-15T09:00:35+00:00", "process": "sshd", "action": "auth_fail", "src_ip": "198.51.100.23", "port": 51394},
+  {"timestamp": "2026-01-15T09:00:40+00:00", "process": "sshd", "action": "auth_fail", "src_ip": "198.51.100.23", "port": 51405},
+  {"timestamp": "2026-01-15T09:00:45+00:00", "process": "sshd", "action": "auth_fail", "src_ip": "198.51.100.23", "port": 51416},
+  {"timestamp": "2026-01-15T09:00:50+00:00", "process": "sshd", "action": "auth_fail", "src_ip": "198.51.100.23", "port": 51427},
+  {"timestamp": "2026-01-15T09:05:00+00:00", "process": "sudo", "action": "command", "user": "svc-deploy", "target_user": "root", "command": "/usr/bin/systemctl restart nginx", "tty": "pts/0"}
+]

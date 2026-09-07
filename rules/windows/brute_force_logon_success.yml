@@ -1,0 +1,51 @@
+id: WIN-1001
+title: Brute Force Logon Followed by Success
+description: >
+  Detects a cluster of failed interactive/network logons (EventID 4625) against
+  the same account from the same source, followed by a successful logon
+  (EventID 4624) from that same source within the same window - i.e. a
+  password spray or brute force attempt that succeeded.
+level: critical
+mitre_attack:
+  - T1110
+  - T1110.001
+logsource:
+  product: windows
+  service: security
+event_ids:
+  - "4625"
+  - "4624"
+detection_type: sequence
+groupby: IpAddress
+timeframe_minutes: 10
+steps:
+  - name: failed_logons
+    match:
+      EventID: 4625
+    threshold: 5
+  - name: successful_logon
+    match:
+      EventID: 4624
+    threshold: 1
+required_fields:
+  - TargetUserName
+  - TargetSid
+  - IpAddress
+  - LogonType
+  - WorkstationName
+false_positives:
+  - A user who genuinely mistypes their password several times then succeeds
+  - Shared NAT/proxy IP serving many legitimate users (group by workstation instead)
+references:
+  - https://attack.mitre.org/techniques/T1110/
+audit_policy:
+  gpo_path: >
+    Computer Configuration > Windows Settings > Security Settings > Advanced
+    Audit Policy Configuration > Logon/Logoff > Audit Logon (Success and Failure)
+  command: auditpol /set /subcategory:"Logon" /success:enable /failure:enable
+  notes: >
+    Enabled by default on modern Windows Server/clients, but confirm it hasn't
+    been disabled via GPO. TargetSid is populated on 4624 but is S-1-0-0
+    (unresolved) on 4625, since Windows hasn't matched the credential to an
+    account yet - group by TargetUserName + IpAddress, not TargetSid, to
+    correlate the failed attempts.

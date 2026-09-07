@@ -1,0 +1,44 @@
+id: LIN-2001
+title: SSH Brute Force
+description: >
+  Detects a burst of "Failed password" authentication events from sshd
+  against the same source IP within a short window - password spraying or
+  brute forcing against an exposed SSH service.
+level: high
+mitre_attack:
+  - T1110
+  - T1021.004
+logsource:
+  product: linux
+  service: sshd
+event_ids:
+  - "sshd_auth_fail"
+detection_type: threshold
+selection:
+  process: sshd
+  action: auth_fail
+groupby: src_ip
+timeframe_minutes: 5
+threshold: 10
+condition: gte
+required_fields:
+  - src_ip
+  - user
+  - port
+false_positives:
+  - Misconfigured automation/monitoring retrying with stale credentials
+  - Shared NAT egress serving many legitimate users
+references:
+  - https://attack.mitre.org/techniques/T1110/
+audit_policy:
+  gpo_path: /etc/ssh/sshd_config
+  command: >
+    Set "LogLevel VERBOSE" in /etc/ssh/sshd_config and reload sshd
+    (systemctl reload sshd) so failed/accepted attempts include the source
+    IP and, on success, the key fingerprint used.
+  notes: >
+    Default rsyslog/journald config already forwards sshd auth lines to
+    /var/log/auth.log (Debian/Ubuntu) or /var/log/secure (RHEL/CentOS) -
+    confirm your log shipper (Filebeat/Fluentd/etc.) is actually tailing
+    that file and parsing src_ip/user out of the free-text sshd message,
+    since sshd does not emit structured fields natively.

@@ -1,0 +1,38 @@
+id: LIN-2002
+title: Suspicious Sudo Command Execution
+description: >
+  Detects sudo invocations of common privilege-escalation / discovery tooling
+  (e.g. shells, package managers used to drop binaries) that don't match
+  routine admin activity - a coarse but useful first pass on sudo abuse.
+level: medium
+mitre_attack:
+  - T1548.003
+  - T1078.003
+logsource:
+  product: linux
+  service: auth
+event_ids:
+  - "sudo_command"
+detection_type: selection
+selection:
+  process: sudo
+  action: command
+required_fields:
+  - user
+  - target_user
+  - command
+  - tty
+false_positives:
+  - Legitimate admin scripts run interactively via sudo
+references:
+  - https://attack.mitre.org/techniques/T1548/003/
+audit_policy:
+  gpo_path: /etc/sudoers, /etc/audit/rules.d/
+  command: >
+    auditctl -w /etc/sudoers -p wa -k sudoers_changes
+    auditctl -a always,exit -F arch=b64 -S execve -F euid=0 -k root_exec
+  notes: >
+    Sudo already logs "COMMAND=" lines to /var/log/auth.log (Debian/Ubuntu)
+    or /var/log/secure (RHEL) by default. For richer fields (full argv, TTY,
+    working directory) enable auditd rules above so `command` and `tty` are
+    populated for correlation, not just the raw syslog line.

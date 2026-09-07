@@ -1,0 +1,37 @@
+id: AWS-3002
+title: AWS Root Account Usage
+description: >
+  Detects any API call or console login made using the AWS account root user,
+  which should never be used for day-to-day activity per the CIS AWS
+  Foundations Benchmark.
+level: critical
+mitre_attack:
+  - T1078.004
+logsource:
+  category: cloudtrail
+  product: aws
+event_ids:
+  - "*"
+detection_type: selection
+selection:
+  userIdentity.type: Root
+required_fields:
+  - eventName
+  - sourceIPAddress
+  - userIdentity.accountId
+  - userIdentity.arn
+false_positives:
+  - Rare legitimate break-glass root usage - should always be a tracked, ticketed event
+references:
+  - https://attack.mitre.org/techniques/T1078/004/
+  - https://www.cisecurity.org/benchmark/amazon_web_services (CIS AWS Foundations 1.7)
+audit_policy:
+  gpo_path: CloudTrail trail + CloudWatch metric filter/alarm
+  command: >
+    aws cloudwatch put-metric-alarm --alarm-name root-account-usage
+    --metric-name RootAccountUsageCount --namespace CISBenchmark
+    --statistic Sum --period 300 --threshold 1 --comparison-operator GreaterThanOrEqualToThreshold
+  notes: >
+    Requires a CloudTrail trail with management events + a CloudWatch Logs
+    metric filter pattern '{ $.userIdentity.type = "Root" }' feeding this
+    alarm - CloudTrail alone only gets you the log, not the alert.

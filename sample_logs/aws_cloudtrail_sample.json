@@ -1,0 +1,47 @@
+[
+  {
+    "eventTime": "2026-01-15T09:00:00+00:00",
+    "eventName": "ConsoleLogin",
+    "sourceIPAddress": "192.0.2.44",
+    "userIdentity.arn": "arn:aws:iam::123456789012:user/jdoe",
+    "userIdentity.accountId": "123456789012",
+    "responseElements.ConsoleLogin": "Failure",
+    "additionalEventData.MFAUsed": "No"
+  },
+  {
+    "eventTime": "2026-01-15T09:00:20+00:00",
+    "eventName": "ConsoleLogin",
+    "sourceIPAddress": "192.0.2.44",
+    "userIdentity.arn": "arn:aws:iam::123456789012:user/jdoe",
+    "responseElements.ConsoleLogin": "Failure"
+  },
+  {
+    "eventTime": "2026-01-15T09:00:40+00:00",
+    "eventName": "ConsoleLogin",
+    "sourceIPAddress": "192.0.2.44",
+    "userIdentity.arn": "arn:aws:iam::123456789012:user/jdoe",
+    "responseElements.ConsoleLogin": "Failure"
+  },
+  {
+    "eventTime": "2026-01-15T09:01:00+00:00",
+    "eventName": "ConsoleLogin",
+    "sourceIPAddress": "192.0.2.44",
+    "userIdentity.arn": "arn:aws:iam::123456789012:user/jdoe",
+    "responseElements.ConsoleLogin": "Failure"
+  },
+  {
+    "eventTime": "2026-01-15T09:01:20+00:00",
+    "eventName": "ConsoleLogin",
+    "sourceIPAddress": "192.0.2.44",
+    "userIdentity.arn": "arn:aws:iam::123456789012:user/jdoe",
+    "responseElements.ConsoleLogin": "Failure"
+  },
+  {
+    "eventTime": "2026-01-15T10:30:00+00:00",
+    "eventName": "DeleteTrail",
+    "sourceIPAddress": "203.0.113.9",
+    "userIdentity.type": "Root",
+    "userIdentity.accountId": "123456789012",
+    "userIdentity.arn": "arn:aws:iam::123456789012:root"
+  }
+]
