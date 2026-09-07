@@ -23,14 +23,17 @@ def field_matches(event: Event, field: str, expected: Any) -> bool:
     value = event[actual_field]
 
     if modifier:
-        if not isinstance(value, str) or not isinstance(expected, str):
+        if not isinstance(value, str):
+            return False
+        candidates = expected if isinstance(expected, list) else [expected]
+        if not all(isinstance(c, str) for c in candidates):
             return False
         if modifier == "contains":
-            return expected in value
+            return any(c in value for c in candidates)
         if modifier == "endswith":
-            return value.endswith(expected)
+            return any(value.endswith(c) for c in candidates)
         if modifier == "startswith":
-            return value.startswith(expected)
+            return any(value.startswith(c) for c in candidates)
         raise ValueError(f"Unknown field modifier '{modifier}' on field '{field}'")
 
     if isinstance(expected, list):
