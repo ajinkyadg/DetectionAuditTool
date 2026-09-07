@@ -1,6 +1,6 @@
 import os
 
-from detection_audit_tool.matcher import run_rules
+from detection_audit_tool.matcher import field_matches, run_rules
 from detection_audit_tool.rule_loader import load_rules
 from detection_audit_tool.simulator import build_brute_force_scenario
 
@@ -12,6 +12,26 @@ def test_all_rules_load_without_error():
     assert len(rules) >= 8
     ids = [r.id for r in rules]
     assert len(ids) == len(set(ids)), "duplicate rule ids"
+
+
+def test_field_matches_numeric_modifiers():
+    event = {"bytes_out": 500_000_000}
+    assert field_matches(event, "bytes_out|gte", 100_000_000) is True
+    assert field_matches(event, "bytes_out|gte", 600_000_000) is False
+    assert field_matches(event, "bytes_out|gt", 500_000_000) is False
+    assert field_matches(event, "bytes_out|lte", 500_000_000) is True
+    assert field_matches(event, "bytes_out|lt", 500_000_000) is False
+
+
+def test_field_matches_numeric_modifier_on_non_numeric_value_never_matches():
+    assert field_matches({"bytes_out": "a lot"}, "bytes_out|gte", 100) is False
+    assert field_matches({"bytes_out": True}, "bytes_out|gte", 0) is False
+
+
+def test_field_matches_string_modifiers_still_work_alongside_numeric_ones():
+    event = {"Image": "C:\\Windows\\System32\\cmd.exe"}
+    assert field_matches(event, "Image|endswith", "cmd.exe") is True
+    assert field_matches(event, "Image|contains", "System32") is True
 
 
 def test_brute_force_sequence_rule_fires_on_simulated_attack():

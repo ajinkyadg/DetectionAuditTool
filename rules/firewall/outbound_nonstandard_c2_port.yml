@@ -1,0 +1,37 @@
+id: FW-7005
+title: Outbound Connection to a Known C2-Associated Port
+description: >
+  Detects an allowed outbound connection to a destination port commonly
+  associated with command-and-control frameworks and reverse shells (e.g.
+  Metasploit's and Cobalt Strike's default handler ports) rather than a
+  standard application port.
+level: medium
+mitre_attack:
+  - T1571
+logsource:
+  category: firewall
+event_ids:
+  - "fw_allow"
+detection_type: selection
+selection:
+  action: allow
+  zone_dst: untrust
+  dst_port: [4444, 1337, 31337]
+required_fields:
+  - action
+  - zone_dst
+  - dst_port
+false_positives:
+  - Internal tooling or an authorized penetration test reusing the same default ports
+  - A custom internal application that happens to use one of these ports
+references:
+  - https://attack.mitre.org/techniques/T1571/
+audit_policy:
+  gpo_path: Firewall traffic logging - allowed sessions
+  command: >
+    Enable allow-session logging so outbound connections on non-standard
+    ports are visible, not just denies.
+  notes: >
+    Cheap to bypass by simply picking a different port - pair this with
+    FW-7002 (volume) and FW-7004 (retry pattern) rather than relying on
+    it alone.

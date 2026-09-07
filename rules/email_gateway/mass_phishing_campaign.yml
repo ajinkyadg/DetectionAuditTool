@@ -1,0 +1,44 @@
+id: EMAIL-8003
+title: Mass Phishing Campaign From a Single External Sender
+description: >
+  Detects the same external sender address triggering the gateway's
+  phishing verdict across many messages in a short window - a mass
+  phishing campaign targeting the organization, as opposed to a single
+  one-off flagged message.
+level: high
+mitre_attack:
+  - T1566
+logsource:
+  category: email_gateway
+event_ids:
+  - "email_verdict"
+detection_type: threshold
+selection:
+  direction: inbound
+  verdict: phish
+groupby: sender
+timeframe_minutes: 10
+threshold: 8
+condition: gte
+required_fields:
+  - direction
+  - verdict
+  - sender
+  - timestamp
+false_positives:
+  - A phishing-simulation/security-awareness training campaign run by the organization's own security team, sent from a lookalike test domain
+  - A misconfigured internal system whose outbound notification emails get misclassified as phishing by a downstream forwarder
+references:
+  - https://attack.mitre.org/techniques/T1566/
+audit_policy:
+  gpo_path: Email gateway anti-phishing verdict logging
+  command: >
+    Ensure the gateway logs its per-message verdict (clean/spam/phish/
+    malware/bulk) for every processed message, not only for messages it
+    blocked - a message quarantined can still be logged as "phish" while
+    the action taken is separately "quarantined."
+  notes: >
+    groupby is sender (a single mailbox/address), which undercounts a
+    campaign that rotates through many different sending addresses from
+    the same infrastructure - pair with sender-domain or sending-IP
+    reputation correlation for broader campaigns.

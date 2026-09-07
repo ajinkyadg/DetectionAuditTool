@@ -9,10 +9,16 @@ from typing import Any, Dict, List, Optional
 from .models import Detection, Event, Rule, parse_time
 
 
+_STRING_MODIFIERS = {"contains", "endswith", "startswith"}
+_NUMERIC_MODIFIERS = {"gte", "gt", "lte", "lt"}
+
+
 def field_matches(event: Event, field: str, expected: Any) -> bool:
     # Sigma-style field modifiers: "Image|endswith", "Uri|contains",
-    # "Image|startswith". No modifier suffix means exact match (or "value
-    # in expected" when expected is a list, unchanged).
+    # "Image|startswith" (string), plus "bytes_out|gte" etc. (numeric, for
+    # volume-style conditions like exfil-by-byte-count that no exact-match
+    # or string modifier can express). No modifier suffix means exact match
+    # (or "value in expected" when expected is a list, unchanged).
     actual_field = field
     modifier: Optional[str] = None
     if "|" in field:
@@ -22,7 +28,7 @@ def field_matches(event: Event, field: str, expected: Any) -> bool:
         return False
     value = event[actual_field]
 
-    if modifier:
+    if modifier in _STRING_MODIFIERS:
         if not isinstance(value, str):
             return False
         candidates = expected if isinstance(expected, list) else [expected]
@@ -34,6 +40,22 @@ def field_matches(event: Event, field: str, expected: Any) -> bool:
             return any(value.endswith(c) for c in candidates)
         if modifier == "startswith":
             return any(value.startswith(c) for c in candidates)
+
+    if modifier in _NUMERIC_MODIFIERS:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return False
+        if not isinstance(expected, (int, float)) or isinstance(expected, bool):
+            return False
+        if modifier == "gte":
+            return value >= expected
+        if modifier == "gt":
+            return value > expected
+        if modifier == "lte":
+            return value <= expected
+        if modifier == "lt":
+            return value < expected
+
+    if modifier:
         raise ValueError(f"Unknown field modifier '{modifier}' on field '{field}'")
 
     if isinstance(expected, list):

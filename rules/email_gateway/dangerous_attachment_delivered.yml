@@ -1,0 +1,43 @@
+id: EMAIL-8001
+title: Dangerous Attachment Type Delivered to a Mailbox
+description: >
+  Detects an inbound email carrying an executable, script, or archive
+  attachment type commonly used to deliver malware (e.g. .exe, .js, .vbs,
+  .iso, .lnk, .hta) that the gateway still delivered rather than
+  blocking or quarantining.
+level: high
+mitre_attack:
+  - T1566.001
+logsource:
+  category: email_gateway
+event_ids:
+  - "email_delivered"
+detection_type: selection
+selection:
+  direction: inbound
+  action: delivered
+  has_attachment: true
+  attachment_name|endswith: [".exe", ".js", ".vbs", ".iso", ".lnk", ".hta", ".scr"]
+required_fields:
+  - direction
+  - action
+  - has_attachment
+  - attachment_name
+false_positives:
+  - A legitimate internal software distribution or IT tooling email, if outbound-to-inbound routing is misclassified as inbound
+  - A user emailing themselves a file from a personal account (should still be reviewed, but often benign)
+references:
+  - https://attack.mitre.org/techniques/T1566/001/
+audit_policy:
+  gpo_path: Email gateway attachment/file-type policy
+  command: >
+    Configure the attachment-filtering policy (Microsoft Defender for
+    Office 365 anti-malware/Safe Attachments, Proofpoint attachment
+    defense, Cisco Secure Email content filters) to log even attachments
+    it allows through, not just the ones it blocks - "delivered but
+    logged" is what this rule needs.
+  notes: >
+    Most breaches involving this vector rely on the attachment type NOT
+    being blocked outright (e.g. a password-protected .zip hiding an
+    .exe) - block-list coverage alone will miss this, logging coverage
+    of what was actually delivered is the point.

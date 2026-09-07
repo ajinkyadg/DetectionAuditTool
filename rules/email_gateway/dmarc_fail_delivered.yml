@@ -1,0 +1,42 @@
+id: EMAIL-8002
+title: Email Delivered Despite Failing DMARC Authentication
+description: >
+  Detects an inbound email that failed DMARC authentication (the sending
+  domain's own policy says this message shouldn't be trusted) but was
+  delivered to the mailbox anyway - a spoofed-sender email that got
+  through instead of being quarantined or rejected.
+level: high
+mitre_attack:
+  - T1656
+logsource:
+  category: email_gateway
+event_ids:
+  - "email_delivered"
+detection_type: selection
+selection:
+  direction: inbound
+  action: delivered
+  dmarc_result: fail
+required_fields:
+  - direction
+  - action
+  - dmarc_result
+  - sender_domain
+false_positives:
+  - A legitimate sender whose domain has a genuinely broken or overly strict DMARC record (mailing-list forwarding is a common cause of false DMARC failures)
+  - A newly onboarded vendor domain that hasn't finished DMARC/SPF/DKIM setup yet
+references:
+  - https://attack.mitre.org/techniques/T1656/
+audit_policy:
+  gpo_path: Email gateway DMARC enforcement policy
+  command: >
+    Set the gateway's DMARC-fail action to quarantine or reject rather
+    than "deliver and tag" (Microsoft Defender for Office 365 anti-phish
+    policy action, Proofpoint/Mimecast DMARC enforcement setting). If the
+    action is left at "deliver," this rule will fire constantly and
+    provide no real protection on its own.
+  notes: >
+    A message can pass SPF or DKIM individually and still fail DMARC if
+    alignment fails (e.g. the From: header domain doesn't match the
+    domain that actually authenticated) - log dmarc_result specifically,
+    not just spf_result/dkim_result.

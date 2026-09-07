@@ -1,0 +1,38 @@
+id: FW-7002
+title: Large Outbound Data Transfer to an External Destination
+description: >
+  Detects a single allowed session to an untrusted/external zone that
+  transferred an unusually large volume of data outbound - a common
+  network-visible signature of bulk data exfiltration.
+level: high
+mitre_attack:
+  - T1041
+logsource:
+  category: firewall
+event_ids:
+  - "fw_allow"
+detection_type: selection
+selection:
+  action: allow
+  zone_dst: untrust
+  bytes_out|gte: 500000000
+required_fields:
+  - action
+  - zone_dst
+  - bytes_out
+false_positives:
+  - Legitimate large file transfers, backups, or software updates to cloud storage
+  - Video conferencing or streaming sessions
+  - Scheduled data replication to a partner network or cloud provider
+references:
+  - https://attack.mitre.org/techniques/T1041/
+audit_policy:
+  gpo_path: Firewall traffic logging - session end, with byte counters
+  command: >
+    Enable traffic logging at session end (not session start) with byte
+    counters included in the log record.
+  notes: >
+    Session-start-only logging never captures bytes_out - the session
+    hasn't finished transferring anything yet when that log line is
+    written - so this rule is unevaluable unless session-end logging is
+    on.

@@ -1,0 +1,38 @@
+id: FW-7003
+title: Administrative Port Allowed Inbound from an Untrusted Zone
+description: >
+  Detects the firewall allowing an inbound connection to a
+  remote-administration port (RDP, SMB) from an untrusted/external zone -
+  exposing a high-value lateral-movement and initial-access surface
+  directly to the internet.
+level: high
+mitre_attack:
+  - T1021.001
+logsource:
+  category: firewall
+event_ids:
+  - "fw_allow"
+detection_type: selection
+selection:
+  action: allow
+  zone_src: untrust
+  dst_port: [3389, 445]
+required_fields:
+  - action
+  - zone_src
+  - dst_port
+false_positives:
+  - An intentional, source-IP-restricted RDP/SMB jump host rule
+  - Site-to-site VPN traffic misclassified into the untrust zone
+references:
+  - https://attack.mitre.org/techniques/T1021/001/
+audit_policy:
+  gpo_path: Firewall traffic logging - allowed sessions
+  command: >
+    Enable allow-session logging on inbound rules - many firewalls only
+    log denies by default, so successful inbound connections stay
+    invisible unless allow-logging is explicitly turned on per rule.
+  notes: >
+    This is a rule about exposure, not an active attack signature - a
+    single hit means the rulebase itself needs review, not just the one
+    session.

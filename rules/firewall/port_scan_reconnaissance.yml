@@ -1,0 +1,43 @@
+id: FW-7001
+title: Port Scan / Network Reconnaissance from a Single Source
+description: >
+  Detects a burst of firewall-denied connection attempts from the same
+  source IP within a short window - the network-visible signature of a
+  port scan or automated reconnaissance tool probing for open services.
+level: medium
+mitre_attack:
+  - T1595.001
+logsource:
+  category: firewall
+event_ids:
+  - "fw_deny"
+detection_type: threshold
+selection:
+  action: deny
+groupby: src_ip
+timeframe_minutes: 2
+threshold: 20
+condition: gte
+required_fields:
+  - action
+  - src_ip
+  - timestamp
+false_positives:
+  - Vulnerability scanning performed by the organization's own security team
+  - A misconfigured client retrying a blocked connection in a loop
+  - Monitoring/health-check traffic hitting a decommissioned rule or host
+references:
+  - https://attack.mitre.org/techniques/T1595/001/
+audit_policy:
+  gpo_path: Firewall security/access-control rule logging profile
+  command: >
+    Attach a logging profile that logs denied sessions to every
+    security/access-control rule, not just the default "deny all"
+    catch-all - most NGFWs (Palo Alto PAN-OS, Cisco ASA/FTD, FortiGate,
+    pfSense) log denies by default, but confirm it is actually enabled
+    per rule.
+  notes: >
+    Without per-rule deny logging, only the traffic hitting the final
+    catch-all rule is visible - denies matched earlier in the rulebase
+    (e.g. an explicit "block known-bad-country" rule) can silently go
+    unlogged.

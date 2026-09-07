@@ -1,0 +1,45 @@
+id: FW-7004
+title: Repeated Blocked Outbound Connections Followed by a Successful One
+description: >
+  Detects the same external destination being blocked several times in a
+  row and then successfully connected to - the network signature of C2
+  malware retrying a beacon until a firewall rule change, NAT exception,
+  or misconfiguration lets the traffic through.
+level: high
+mitre_attack:
+  - T1071
+logsource:
+  category: firewall
+event_ids:
+  - "fw_deny"
+  - "fw_allow"
+detection_type: sequence
+groupby: dst_ip
+timeframe_minutes: 15
+steps:
+  - name: repeated_blocks
+    match:
+      action: deny
+    threshold: 5
+  - name: successful_connection
+    match:
+      action: allow
+    threshold: 1
+required_fields:
+  - action
+  - dst_ip
+  - timestamp
+false_positives:
+  - A legitimate service reconnecting after a firewall rule was intentionally updated
+  - A client retrying after a transient network issue, unrelated to the earlier blocks
+references:
+  - https://attack.mitre.org/techniques/T1071/
+audit_policy:
+  gpo_path: n/a - cross-action correlation within one log source
+  command: >
+    Log both allow and deny actions with a consistent dst_ip field across
+    both, so the two sides of this sequence can be correlated.
+  notes: >
+    Unlike WAF-5005, both steps here come from the same log source
+    (firewall traffic logs) - the correlation challenge is time-windowing
+    within one stream, not joining across sources.

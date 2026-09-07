@@ -1,0 +1,42 @@
+id: EMAIL-8005
+title: Large Outbound Attachment Sent to a Personal Webmail Domain
+description: >
+  Detects an outbound email with a large attachment sent to a free
+  personal webmail domain (Gmail, Yahoo, Outlook.com, etc.) - a common,
+  low-effort data-exfiltration path that doesn't require any malware or
+  external tooling, just a compromised or malicious mailbox.
+level: high
+mitre_attack:
+  - T1048
+logsource:
+  category: email_gateway
+event_ids:
+  - "email_sent"
+detection_type: selection
+selection:
+  direction: outbound
+  has_attachment: true
+  recipient_domain: ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com"]
+  attachment_size_mb|gte: 20
+required_fields:
+  - direction
+  - has_attachment
+  - recipient_domain
+  - attachment_size_mb
+false_positives:
+  - An employee emailing a large personal file (photos, resume) to their own personal account - common and usually benign, but worth a lightweight review process rather than silent allow
+  - A contractor or partner who was never issued a corporate address and legitimately uses a personal one for business
+references:
+  - https://attack.mitre.org/techniques/T1048/
+audit_policy:
+  gpo_path: Email gateway outbound DLP policy
+  command: >
+    Enable outbound DLP rules that log attachment size and recipient
+    domain for external-bound mail (Microsoft Purview DLP outbound mail
+    flow rules, Proofpoint/Mimecast outbound content filtering) - many
+    gateways are tuned almost entirely for inbound threats and ship with
+    little to no outbound visibility by default.
+  notes: >
+    20MB is a starting point, not a universal threshold - tune it against
+    your own organization's normal outbound-attachment size distribution
+    to avoid drowning in benign "sent myself a video" alerts.

@@ -1,0 +1,43 @@
+id: EMAIL-8004
+title: Executive/Brand Impersonation Email Delivered
+description: >
+  Detects an inbound email that the gateway's own impersonation
+  detection flagged (display name matches a protected user or the
+  organization's brand, but the sending domain doesn't) and that was
+  still delivered - a classic CEO-fraud / business email compromise
+  lure reaching the mailbox.
+level: critical
+mitre_attack:
+  - T1656
+logsource:
+  category: email_gateway
+event_ids:
+  - "email_verdict"
+detection_type: selection
+selection:
+  direction: inbound
+  action: delivered
+  verdict: impersonation
+required_fields:
+  - direction
+  - action
+  - verdict
+  - sender
+  - display_name
+false_positives:
+  - An employee's genuine personal email address that happens to share a display name with an executive (rare, but possible after a role change or rehire)
+  - A newly acquired subsidiary sending legitimately from a domain not yet added to the allowlist
+references:
+  - https://attack.mitre.org/techniques/T1656/
+audit_policy:
+  gpo_path: Email gateway impersonation/anti-phishing policy
+  command: >
+    Enable impersonation protection for a defined list of protected users
+    (executives, finance, HR) and protected domains (Microsoft Defender
+    for Office 365 anti-phishing policy impersonation settings,
+    Proofpoint/Mimecast impersonation protection) and set the action on
+    detection to quarantine, not just tag-and-deliver.
+  notes: >
+    This is "critical," not "high," deliberately - BEC/wire-fraud
+    attempts that reach a finance mailbox are one reply away from a real
+    financial loss, unlike most phishing which needs a click to matter.
