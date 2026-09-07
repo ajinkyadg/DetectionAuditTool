@@ -10,9 +10,29 @@ from .models import Detection, Event, Rule, parse_time
 
 
 def field_matches(event: Event, field: str, expected: Any) -> bool:
-    if field not in event:
+    # Sigma-style field modifiers: "Image|endswith", "Uri|contains",
+    # "Image|startswith". No modifier suffix means exact match (or "value
+    # in expected" when expected is a list, unchanged).
+    actual_field = field
+    modifier: Optional[str] = None
+    if "|" in field:
+        actual_field, modifier = field.split("|", 1)
+
+    if actual_field not in event:
         return False
-    value = event[field]
+    value = event[actual_field]
+
+    if modifier:
+        if not isinstance(value, str) or not isinstance(expected, str):
+            return False
+        if modifier == "contains":
+            return expected in value
+        if modifier == "endswith":
+            return value.endswith(expected)
+        if modifier == "startswith":
+            return value.startswith(expected)
+        raise ValueError(f"Unknown field modifier '{modifier}' on field '{field}'")
+
     if isinstance(expected, list):
         return value in expected
     return value == expected
