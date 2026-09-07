@@ -1,0 +1,34 @@
+id: WAF-5001
+title: SQL Injection Attempt Blocked
+description: >
+  Detects a WAF signature match and block for a SQL injection pattern
+  (e.g. UNION SELECT, tautology-based auth bypass) against a web
+  application.
+level: high
+mitre_attack:
+  - T1190
+logsource:
+  category: waf
+event_ids:
+  - "waf_block"
+detection_type: selection
+selection:
+  action: block
+  attack_type: sqli
+required_fields:
+  - src_ip
+  - uri
+  - matched_rule
+false_positives:
+  - Rare - legitimate application traffic almost never contains SQL syntax in request parameters; a spike may indicate an overly broad signature rather than a real false positive
+references:
+  - https://attack.mitre.org/techniques/T1190/
+  - https://owasp.org/www-community/attacks/SQL_Injection
+audit_policy:
+  gpo_path: WAF (ModSecurity/AWS WAF/Cloudflare WAF) - ensure SQLi rule group is enabled in blocking (not just detection/log) mode, and that blocked requests are shipped to your log pipeline.
+  command: "aws wafv2 update-web-acl --rules '[{\"Name\":\"AWSManagedRulesSQLiRuleSet\",...}]'"
+  notes: >
+    Many WAF deployments start SQLi rule groups in "count" (log-only)
+    mode to avoid breaking legitimate traffic during tuning - confirm
+    the rule group is actually set to Block before relying on this
+    detection meaning an attack was stopped.

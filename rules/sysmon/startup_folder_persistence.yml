@@ -1,0 +1,37 @@
+id: SYS-4004
+title: Executable Dropped into the Startup Folder
+description: >
+  Detects a file being created directly in the current user's Startup
+  folder - anything placed here runs automatically at next logon, making
+  it one of the simplest and most common persistence mechanisms.
+level: high
+mitre_attack:
+  - T1547.001
+logsource:
+  product: windows
+  service: sysmon
+event_ids:
+  - "11"
+detection_type: selection
+selection:
+  EventID: 11
+  TargetFilename|contains: "\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\"
+  TargetFilename|endswith:
+    - ".exe"
+    - ".lnk"
+    - ".vbs"
+required_fields:
+  - TargetFilename
+  - Image
+  - User
+false_positives:
+  - Legitimate software installers that intentionally add a startup shortcut (e.g. a chat app, a sync client)
+references:
+  - https://attack.mitre.org/techniques/T1547/001/
+audit_policy:
+  gpo_path: Sysmon configuration - FileCreate (Event ID 11), scoped to the Startup folder path to keep volume manageable.
+  command: sysmon64.exe -c sysmonconfig.xml
+  notes: >
+    FileCreate is very high volume system-wide - nearly every real-world
+    config scopes this to specific interesting paths (Startup, Temp,
+    Downloads) rather than logging every file write on disk.

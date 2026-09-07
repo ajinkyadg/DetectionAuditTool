@@ -1,0 +1,32 @@
+id: WAF-5002
+title: Cross-Site Scripting Attempt Blocked
+description: >
+  Detects a WAF signature match and block for a cross-site scripting
+  (XSS) pattern in a request parameter, header, or body.
+level: medium
+mitre_attack:
+  - T1190
+  - T1059.007
+logsource:
+  category: waf
+event_ids:
+  - "waf_block"
+detection_type: selection
+selection:
+  action: block
+  attack_type: xss
+required_fields:
+  - src_ip
+  - uri
+  - matched_rule
+false_positives:
+  - Content-heavy legitimate requests (e.g. a CMS admin pasting HTML/rich text) can trip generic XSS signatures
+references:
+  - https://attack.mitre.org/techniques/T1190/
+  - https://owasp.org/www-community/attacks/xss/
+audit_policy:
+  gpo_path: WAF - ensure the XSS managed rule group is enabled in blocking mode.
+  command: "aws wafv2 update-web-acl --rules '[{\"Name\":\"AWSManagedRulesCommonRuleSet\",...}]'"
+  notes: >
+    Tune this against known legitimate rich-text/HTML-accepting endpoints
+    before enabling block mode broadly, or expect false positives there.

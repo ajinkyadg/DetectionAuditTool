@@ -1,0 +1,63 @@
+id: WAF-5005
+title: WAF Attack Signatures Followed by a Successful Login (Possible Successful Exploitation)
+description: >
+  Detects a burst of WAF-blocked attack attempts from a source IP,
+  followed by a successful application login from that same IP shortly
+  after. Individually, "some blocked requests" and "a successful login"
+  are both low-signal - a scanner gets blocked constantly, and most
+  successful logins are legitimate. The correlation is the point: the
+  same source both attacked the application AND got in. This is a
+  cross-log-source rule - it needs WAF logs and web application/server
+  logs correlated by source IP, which most SIEMs treat as two separate
+  data sources that need to be explicitly joined.
+level: critical
+mitre_attack:
+  - T1190
+  - T1078
+logsource:
+  category: correlation
+  product: waf+web_server
+event_ids:
+  - "waf_block"
+  - "login_success"
+detection_type: sequence
+groupby: src_ip
+timeframe_minutes: 15
+steps:
+  - name: waf_attack_hits
+    match:
+      action: block
+    threshold: 5
+  - name: successful_login
+    match:
+      event_type: login
+      result: success
+    threshold: 1
+required_fields:
+  - src_ip
+  - action
+  - event_type
+  - result
+false_positives:
+  - >
+    A legitimate user whose browser/extension triggers WAF signatures
+    (e.g. a security-testing browser extension, an overly aggressive ad
+    blocker mangling requests) followed by their own normal login. Rare,
+    but the reason this is "critical" and not an auto-block action -
+    it should page a human, not silently lock the account.
+  - A shared corporate NAT IP where one user got flagged and a different legitimate user later logs in from the same address
+references:
+  - https://attack.mitre.org/techniques/T1190/
+  - https://attack.mitre.org/techniques/T1078/
+audit_policy:
+  gpo_path: >
+    Requires WAF logs and web application authentication logs to land in
+    the same SIEM/log pipeline with a shared, normalized field for source
+    IP - this is a data-engineering prerequisite, not a single toggle.
+  command: n/a - cross-source log pipeline configuration
+  notes: >
+    This is the highest-value rule in this category precisely because it
+    can't be built from either log source alone - it's the kind of
+    detection that only exists once your logging is unified enough to
+    correlate across systems, which is usually the actual bottleneck,
+    not the detection logic itself.

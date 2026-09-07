@@ -1,0 +1,40 @@
+id: SYS-4002
+title: LOLBin Used to Fetch a Remote Payload
+description: >
+  Detects a living-off-the-land binary (certutil, bitsadmin) making an
+  outbound network connection - both are legitimate Windows tools
+  frequently abused to download second-stage payloads while evading
+  application allow-listing.
+level: high
+mitre_attack:
+  - T1105
+  - T1218.010
+logsource:
+  product: windows
+  service: sysmon
+event_ids:
+  - "3"
+detection_type: selection
+selection:
+  EventID: 3
+  Image|endswith:
+    - "certutil.exe"
+    - "bitsadmin.exe"
+  Initiated: true
+required_fields:
+  - Image
+  - DestinationIp
+  - DestinationPort
+  - Initiated
+false_positives:
+  - Legitimate certutil usage for certificate management that happens to touch a CRL/OCSP endpoint over the network
+references:
+  - https://attack.mitre.org/techniques/T1105/
+  - https://attack.mitre.org/techniques/T1218/010/
+audit_policy:
+  gpo_path: Sysmon configuration - NetworkConnect (Event ID 3) enabled, ideally scoped to a process include-list to avoid excessive volume.
+  command: sysmon64.exe -c sysmonconfig.xml
+  notes: >
+    Network event volume from Sysmon can be very high without filtering -
+    most public baseline configs scope Event ID 3 to a shorter list of
+    processes of interest rather than logging every connection.

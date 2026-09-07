@@ -1,0 +1,34 @@
+id: SYS-4005
+title: Registry Run Key Modified for Persistence
+description: >
+  Detects a value being set under a Run/RunOnce registry key - the
+  classic registry-based persistence mechanism, causing a program to
+  execute automatically at user logon.
+level: high
+mitre_attack:
+  - T1547.001
+logsource:
+  product: windows
+  service: sysmon
+event_ids:
+  - "13"
+detection_type: selection
+selection:
+  EventID: 13
+  EventType: SetValue
+  TargetObject|contains: "\\CurrentVersion\\Run"
+required_fields:
+  - TargetObject
+  - Details
+  - Image
+false_positives:
+  - Legitimate software (chat clients, sync tools, driver utilities) registering itself to run at startup during installation
+references:
+  - https://attack.mitre.org/techniques/T1547/001/
+audit_policy:
+  gpo_path: Sysmon configuration - RegistryEvent (Event ID 13), scoped to Run/RunOnce key paths.
+  command: sysmon64.exe -c sysmonconfig.xml
+  notes: >
+    Registry event volume is high system-wide; scope the config to the
+    specific Run/RunOnce/Services key paths that matter for persistence
+    detection rather than logging all registry writes.

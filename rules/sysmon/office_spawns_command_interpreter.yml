@@ -1,0 +1,44 @@
+id: SYS-4001
+title: Office Application Spawning Command Interpreter
+description: >
+  Detects a Microsoft Office application directly spawning a command
+  interpreter or scripting engine - the classic execution step after a
+  user opens a malicious macro-enabled document (phishing attachment).
+level: high
+mitre_attack:
+  - T1566.001
+  - T1059.001
+logsource:
+  product: windows
+  service: sysmon
+event_ids:
+  - "1"
+detection_type: selection
+selection:
+  EventID: 1
+  ParentImage|endswith:
+    - "WINWORD.EXE"
+    - "EXCEL.EXE"
+    - "POWERPNT.EXE"
+  Image|endswith:
+    - "cmd.exe"
+    - "powershell.exe"
+    - "wscript.exe"
+    - "cscript.exe"
+required_fields:
+  - ParentImage
+  - Image
+  - CommandLine
+  - User
+false_positives:
+  - Legitimate add-ins or macros that shell out for approved automation (rare, should be an allow-listed exception, not the default)
+references:
+  - https://attack.mitre.org/techniques/T1566/001/
+  - https://attack.mitre.org/techniques/T1059/001/
+audit_policy:
+  gpo_path: Sysmon configuration - ensure ProcessCreate (Event ID 1) is enabled with a config that captures ParentImage/CommandLine (e.g. SwiftOnSecurity's or Olaf Hartong's baseline sysmonconfig).
+  command: sysmon64.exe -c sysmonconfig.xml
+  notes: >
+    Sysmon is a separate install, not built into Windows - requires
+    Sysinternals Sysmon deployed with a config file that logs process
+    creation with command-line capture enabled.

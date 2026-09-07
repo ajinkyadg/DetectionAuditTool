@@ -1,0 +1,39 @@
+id: WEB-6005
+title: Web Shell-Style Request Pattern
+description: >
+  Detects a request to a script file (.php/.jsp) carrying a "cmd="
+  parameter - a common calling convention for simple web shells that
+  execute an attacker-supplied OS command and return the output.
+level: critical
+mitre_attack:
+  - T1505.003
+logsource:
+  category: web_server
+event_ids:
+  - "access_log"
+detection_type: selection
+selection:
+  # A single "uri|contains" key with two full patterns, not two separate
+  # "uri|contains" keys — YAML silently lets a duplicate key overwrite the
+  # first rather than erroring, which is exactly the bug that shipped here
+  # once (caught by testing): a second "uri|contains: [.php, .jsp]" key
+  # silently discarded the "cmd=" requirement entirely.
+  uri|contains:
+    - ".php?cmd="
+    - ".jsp?cmd="
+required_fields:
+  - client_ip
+  - uri
+  - status
+false_positives:
+  - A legitimate application parameter that happens to be literally named "cmd" for something unrelated to command execution (rare, but possible - check the specific endpoint's real behavior before treating every hit as confirmed compromise)
+references:
+  - https://attack.mitre.org/techniques/T1505/003/
+audit_policy:
+  gpo_path: Web server access log configuration - standard URI/query-string logging (default in combined log format).
+  command: "# no special config needed beyond default access logging"
+  notes: >
+    A confirmed hit here warrants immediate response, not just alerting -
+    a live web shell means active remote code execution capability on
+    the server. Correlate with WEB-6003/WAF-5005 for the fuller picture
+    of how it likely got there.

@@ -1,0 +1,34 @@
+id: WAF-5004
+title: Repeated WAF Blocks From the Same Source (Scanning/Probing)
+description: >
+  Detects a burst of blocked requests from the same source IP regardless
+  of attack type - a source trying many different signatures in a short
+  window is behaving like an automated scanner, not a one-off mistake.
+level: medium
+mitre_attack:
+  - T1595
+logsource:
+  category: waf
+event_ids:
+  - "waf_block"
+detection_type: threshold
+selection:
+  action: block
+groupby: src_ip
+timeframe_minutes: 5
+threshold: 5
+condition: gte
+required_fields:
+  - src_ip
+false_positives:
+  - A shared corporate NAT/proxy IP where one misbehaving internal client (broken scanner, misconfigured integration test) trips several signatures
+references:
+  - https://attack.mitre.org/techniques/T1595/
+audit_policy:
+  gpo_path: WAF logging - ensure blocked-request logs are shipped with source IP intact (not lost behind an upstream proxy/CDN without X-Forwarded-For preserved).
+  command: n/a - log shipping configuration, not a policy toggle
+  notes: >
+    If requests pass through a CDN/load balancer before the WAF, confirm
+    the WAF is logging the real client IP and not the load balancer's
+    address for every request - otherwise this rule groups everything
+    under one IP and is useless.

@@ -1,0 +1,36 @@
+id: WEB-6004
+title: Successful Application Login
+description: >
+  Records a successful authentication event against the web application.
+  On its own this is completely benign - almost every request session
+  includes one. Its value is as a correlation building block: paired
+  with WAF-5005, a successful login immediately following a burst of
+  WAF-blocked attack attempts from the same source is what turns "two
+  unremarkable events" into a critical finding.
+level: low
+mitre_attack:
+  - T1078
+logsource:
+  category: web_server
+event_ids:
+  - "app_log"
+detection_type: selection
+selection:
+  event_type: login
+  result: success
+required_fields:
+  - src_ip
+  - username
+  - event_type
+  - result
+false_positives:
+  - This is not itself a false-positive-prone rule; nearly every match is a completely normal login. It exists to be correlated, not alerted on alone.
+references:
+  - https://attack.mitre.org/techniques/T1078/
+audit_policy:
+  gpo_path: Application authentication logging - ensure the app logs both success and failure with a normalized event_type/result field, plus source IP.
+  command: n/a - application-level logging configuration, not an OS/infra toggle
+  notes: >
+    This is application logging, not web-server access logging - it
+    typically needs to be added explicitly in the app's auth code path,
+    not something you get for free from Apache/Nginx access logs.

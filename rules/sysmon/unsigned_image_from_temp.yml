@@ -1,0 +1,36 @@
+id: SYS-4003
+title: Unsigned Image Loaded from a User-Writable Temp Directory
+description: >
+  Detects an unsigned DLL/EXE image being loaded from a user-writable
+  temp directory - a common pattern for DLL side-loading and in-memory
+  payload staging, since legitimate signed software rarely loads code
+  from a location a standard user can write to.
+level: medium
+mitre_attack:
+  - T1574.002
+logsource:
+  product: windows
+  service: sysmon
+event_ids:
+  - "7"
+detection_type: selection
+selection:
+  EventID: 7
+  Signed: false
+  ImageLoaded|contains: "\\AppData\\Local\\Temp\\"
+required_fields:
+  - ImageLoaded
+  - Signed
+  - Signature
+  - Image
+false_positives:
+  - Some legitimate installers/updaters unpack and load unsigned helper DLLs from temp during setup
+references:
+  - https://attack.mitre.org/techniques/T1574/002/
+audit_policy:
+  gpo_path: Sysmon configuration - ImageLoad (Event ID 7) enabled. This event type is high-volume; most baseline configs filter it to unsigned images only at the config level, which this rule then narrows further by path.
+  command: sysmon64.exe -c sysmonconfig.xml
+  notes: >
+    Event ID 7 is one of the noisiest Sysmon event types - confirm your
+    config's ImageLoad filter (e.g. "Signed is false") before enabling
+    this rule, or you'll be evaluating it against a firehose.

@@ -1,0 +1,39 @@
+id: WEB-6003
+title: Sensitive Admin Path Accessed Successfully
+description: >
+  Detects a successful (HTTP 200) request to a well-known administrative
+  interface path (WordPress admin, phpMyAdmin, generic /administrator).
+  On its own this can be entirely legitimate traffic to a real admin
+  panel - the value is as a building block for correlation (e.g. paired
+  with WAF-5005's login-then-attack pattern) and as a baseline of "who
+  actually reaches these paths" for an environment that shouldn't expose
+  them publicly at all.
+level: low
+mitre_attack:
+  - T1190
+logsource:
+  category: web_server
+event_ids:
+  - "access_log"
+detection_type: selection
+selection:
+  uri|contains:
+    - "/wp-admin"
+    - "/administrator"
+    - "/phpmyadmin"
+  status: 200
+required_fields:
+  - client_ip
+  - uri
+  - status
+false_positives:
+  - The application's actual, legitimate administrators using the panel normally - this is expected, not incidental
+references:
+  - https://attack.mitre.org/techniques/T1190/
+audit_policy:
+  gpo_path: Web server access log configuration - status code and URI are standard fields in default log formats.
+  command: "# no special config needed beyond default access logging"
+  notes: >
+    Consider whether these paths should be reachable from the public
+    internet at all - restricting by IP allow-list or VPN is a stronger
+    control than detecting access after the fact.

@@ -1,0 +1,37 @@
+id: WEB-6002
+title: High Rate of 404s From the Same Client (Directory/File Brute Forcing)
+description: >
+  Detects a burst of 404 responses to the same client IP in a short
+  window - a classic sign of automated directory/file brute-forcing
+  (e.g. dirbuster/gobuster/ffuf) hunting for hidden admin panels, backup
+  files, or exposed config files. The threshold here (8 in 2 minutes) is
+  tuned low for a small demo dataset - production deployments typically
+  see real scanners generate far higher rates and would tune this
+  threshold accordingly for their own traffic baseline.
+level: medium
+mitre_attack:
+  - T1595.003
+logsource:
+  category: web_server
+event_ids:
+  - "access_log"
+detection_type: threshold
+selection:
+  status: 404
+groupby: client_ip
+timeframe_minutes: 2
+threshold: 8
+condition: gte
+required_fields:
+  - client_ip
+  - uri
+  - status
+false_positives:
+  - A broken client application retrying a bad/stale URL repeatedly
+  - A legitimate crawler (search engine bot) hitting since-removed pages from an old sitemap
+references:
+  - https://attack.mitre.org/techniques/T1595/003/
+audit_policy:
+  gpo_path: Web server access log configuration - ensure response status code is logged (standard in default combined log format).
+  command: "# Apache/Nginx default combined log format already includes status code"
+  notes: Tune the threshold/window against your own baseline traffic before enabling in blocking/alerting mode - what's anomalous varies a lot by site traffic volume.

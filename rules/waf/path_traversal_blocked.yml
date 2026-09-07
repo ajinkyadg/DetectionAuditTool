@@ -1,0 +1,30 @@
+id: WAF-5003
+title: Path Traversal / LFI Attempt Blocked
+description: >
+  Detects a WAF block for a path traversal or local file inclusion
+  pattern (e.g. "../../etc/passwd") in the request URI or parameters.
+level: high
+mitre_attack:
+  - T1190
+  - T1083
+logsource:
+  category: waf
+event_ids:
+  - "waf_block"
+detection_type: selection
+selection:
+  action: block
+  attack_type: path_traversal
+required_fields:
+  - src_ip
+  - uri
+  - matched_rule
+false_positives:
+  - Legitimate file-path-like parameters in specialized applications (file managers, CI tools) that weren't allow-listed
+references:
+  - https://attack.mitre.org/techniques/T1190/
+  - https://owasp.org/www-community/attacks/Path_Traversal
+audit_policy:
+  gpo_path: WAF - ensure the LFI/path-traversal managed rule group is enabled in blocking mode.
+  command: "aws wafv2 update-web-acl --rules '[{\"Name\":\"AWSManagedRulesLinuxRuleSet\",...}]'"
+  notes: Pair with server-side path canonicalization/allow-listing - a WAF signature is one layer, not the only control.

@@ -1,0 +1,104 @@
+[
+  {
+    "timestamp": "2026-02-01T12:00:00+00:00",
+    "client_ip": "203.0.113.210",
+    "method": "GET",
+    "uri": "/",
+    "status": 200,
+    "user_agent": "sqlmap/1.8#stable (http://sqlmap.org)"
+  },
+  {
+    "timestamp": "2026-02-01T12:05:00+00:00",
+    "client_ip": "203.0.113.211",
+    "method": "GET",
+    "uri": "/old-page-1",
+    "status": 404,
+    "user_agent": "gobuster/3.6"
+  },
+  {
+    "timestamp": "2026-02-01T12:05:05+00:00",
+    "client_ip": "203.0.113.211",
+    "method": "GET",
+    "uri": "/backup.zip",
+    "status": 404,
+    "user_agent": "gobuster/3.6"
+  },
+  {
+    "timestamp": "2026-02-01T12:05:10+00:00",
+    "client_ip": "203.0.113.211",
+    "method": "GET",
+    "uri": "/.env",
+    "status": 404,
+    "user_agent": "gobuster/3.6"
+  },
+  {
+    "timestamp": "2026-02-01T12:05:15+00:00",
+    "client_ip": "203.0.113.211",
+    "method": "GET",
+    "uri": "/admin.php",
+    "status": 404,
+    "user_agent": "gobuster/3.6"
+  },
+  {
+    "timestamp": "2026-02-01T12:05:20+00:00",
+    "client_ip": "203.0.113.211",
+    "method": "GET",
+    "uri": "/config.php.bak",
+    "status": 404,
+    "user_agent": "gobuster/3.6"
+  },
+  {
+    "timestamp": "2026-02-01T12:05:25+00:00",
+    "client_ip": "203.0.113.211",
+    "method": "GET",
+    "uri": "/db_backup.sql",
+    "status": 404,
+    "user_agent": "gobuster/3.6"
+  },
+  {
+    "timestamp": "2026-02-01T12:05:30+00:00",
+    "client_ip": "203.0.113.211",
+    "method": "GET",
+    "uri": "/wp-login.php.old",
+    "status": 404,
+    "user_agent": "gobuster/3.6"
+  },
+  {
+    "timestamp": "2026-02-01T12:05:35+00:00",
+    "client_ip": "203.0.113.211",
+    "method": "GET",
+    "uri": "/staging/",
+    "status": 404,
+    "user_agent": "gobuster/3.6"
+  },
+  {
+    "timestamp": "2026-02-01T12:10:00+00:00",
+    "client_ip": "192.0.2.55",
+    "method": "GET",
+    "uri": "/wp-admin/",
+    "status": 200,
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+  },
+  {
+    "timestamp": "2026-02-01T12:15:00+00:00",
+    "client_ip": "203.0.113.220",
+    "method": "GET",
+    "uri": "/uploads/shell.php?cmd=whoami",
+    "status": 200,
+    "user_agent": "curl/8.4.0"
+  },
+  {
+    "timestamp": "2026-02-01T11:03:00+00:00",
+    "event_type": "login",
+    "result": "success",
+    "src_ip": "198.51.100.99",
+    "username": "admin"
+  },
+  {
+    "timestamp": "2026-02-01T12:20:00+00:00",
+    "event_type": "login",
+    "result": "success",
+    "src_ip": "192.0.2.99",
+    "username": "jdoe"
+  }
+]

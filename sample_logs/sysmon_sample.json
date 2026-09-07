@@ -1,0 +1,63 @@
+[
+  {
+    "TimeCreated": "2026-02-01T09:00:00+00:00",
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "ParentImage": "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE",
+    "CommandLine": "powershell.exe -nop -w hidden -enc SQBFAFgA...",
+    "ParentCommandLine": "\"WINWORD.EXE\" /n \"invoice_final.docm\"",
+    "User": "CORP\\jsmith"
+  },
+  {
+    "TimeCreated": "2026-02-01T09:00:05+00:00",
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\notepad.exe",
+    "ParentImage": "C:\\Windows\\explorer.exe",
+    "CommandLine": "notepad.exe",
+    "ParentCommandLine": "explorer.exe",
+    "User": "CORP\\jsmith"
+  },
+  {
+    "TimeCreated": "2026-02-01T09:01:00+00:00",
+    "EventID": 3,
+    "Image": "C:\\Windows\\System32\\certutil.exe",
+    "Initiated": true,
+    "DestinationIp": "203.0.113.77",
+    "DestinationPort": 443,
+    "User": "CORP\\jsmith"
+  },
+  {
+    "TimeCreated": "2026-02-01T09:02:00+00:00",
+    "EventID": 7,
+    "Image": "C:\\Windows\\System32\\rundll32.exe",
+    "ImageLoaded": "C:\\Users\\jsmith\\AppData\\Local\\Temp\\update.dll",
+    "Signed": false,
+    "Signature": null,
+    "User": "CORP\\jsmith"
+  },
+  {
+    "TimeCreated": "2026-02-01T09:03:00+00:00",
+    "EventID": 11,
+    "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "TargetFilename": "C:\\Users\\jsmith\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\updater.exe",
+    "User": "CORP\\jsmith"
+  },
+  {
+    "TimeCreated": "2026-02-01T09:04:00+00:00",
+    "EventID": 13,
+    "EventType": "SetValue",
+    "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "TargetObject": "HKU\\S-1-5-21-...\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\SecurityUpdate",
+    "Details": "C:\\Users\\jsmith\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\updater.exe",
+    "User": "CORP\\jsmith"
+  },
+  {
+    "TimeCreated": "2026-02-01T09:05:00+00:00",
+    "EventID": 13,
+    "EventType": "SetValue",
+    "Image": "C:\\Windows\\System32\\services.exe",
+    "TargetObject": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Spooler\\Start",
+    "Details": "2",
+    "User": "NT AUTHORITY\\SYSTEM"
+  }
+]
