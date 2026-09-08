@@ -1,0 +1,42 @@
+id: WEBPROXY-9004
+title: Large File Upload to a File-Sharing Site
+description: >
+  Detects a large HTTP POST upload to a domain categorized as file-
+  sharing (e.g. paste sites, personal cloud storage, anonymous file
+  hosts) - a low-effort data-exfiltration path that rides over normal
+  HTTPS traffic and doesn't require malware or an external C2 channel.
+level: high
+mitre_attack:
+  - T1567
+logsource:
+  category: web_proxy
+event_ids:
+  - "proxy_request"
+detection_type: selection
+selection:
+  method: POST
+  category: file-sharing
+  bytes_out|gte: 50000000
+required_fields:
+  - method
+  - category
+  - bytes_out
+  - domain
+  - user
+false_positives:
+  - Legitimate use of an organization-sanctioned cloud storage or file-sharing service for business files
+  - A developer uploading a large build artifact or dataset to a personal account they're also authorized to use for work
+references:
+  - https://attack.mitre.org/techniques/T1567/
+audit_policy:
+  gpo_path: Web proxy request logging - method and byte counts on POST
+  command: >
+    Ensure the proxy logs HTTP method and both bytes_out (upload volume)
+    and category for every request - many proxy deployments only log
+    bytes_in (download volume) by default since that's what bandwidth
+    management cares about, which makes upload-volume rules like this one
+    impossible to evaluate.
+  notes: >
+    50MB is a starting point, not a universal threshold - tune against
+    your organization's normal upload-size distribution to file-sharing
+    domains before relying on it.

@@ -1,0 +1,48 @@
+id: WEBPROXY-9005
+title: Repeated Blocked Requests to a Domain Followed by a Successful One
+description: >
+  Detects the same domain being blocked several times in a row for the
+  same client and then successfully reached - the proxy-visible signature
+  of malware retrying a blocked callback domain until a policy exception,
+  category re-classification, or DNS/domain-fronting change lets the
+  connection through.
+level: high
+mitre_attack:
+  - T1071.001
+logsource:
+  category: web_proxy
+event_ids:
+  - "proxy_request"
+detection_type: sequence
+groupby: domain
+timeframe_minutes: 15
+steps:
+  - name: repeated_blocks
+    match:
+      action: blocked
+    threshold: 5
+  - name: successful_request
+    match:
+      action: allowed
+    threshold: 1
+required_fields:
+  - action
+  - domain
+  - src_ip
+  - timestamp
+false_positives:
+  - A user or admin who requested and received a legitimate policy exception for a previously miscategorized business domain
+  - A domain that was blocked due to a transient category-feed error and corrected shortly after
+references:
+  - https://attack.mitre.org/techniques/T1071/001/
+audit_policy:
+  gpo_path: n/a - cross-action correlation within one log source
+  command: >
+    Log both allowed and blocked actions with a consistent domain field
+    across both, so the two sides of this sequence can be correlated from
+    the same proxy log stream.
+  notes: >
+    Mirrors FW-7004's blocked-then-allowed pattern at the application
+    layer instead of the network layer - useful when the organization's
+    egress control is enforced primarily by the proxy rather than the
+    firewall.

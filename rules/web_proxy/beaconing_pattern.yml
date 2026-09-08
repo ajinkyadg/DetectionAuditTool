@@ -1,0 +1,43 @@
+id: WEBPROXY-9003
+title: Repeated Requests to an Uncategorized Domain (Possible C2 Beaconing)
+description: >
+  Detects a high volume of requests from the same client to the same
+  uncategorized external domain within a short window - the network
+  signature of malware beaconing to its C2 server at a fixed interval,
+  which produces many small, regular HTTP/HTTPS requests rather than
+  normal human browsing behavior.
+level: high
+mitre_attack:
+  - T1071.001
+logsource:
+  category: web_proxy
+event_ids:
+  - "proxy_request"
+detection_type: threshold
+selection:
+  category: uncategorized
+groupby: domain
+timeframe_minutes: 5
+threshold: 20
+condition: gte
+required_fields:
+  - category
+  - domain
+  - src_ip
+  - timestamp
+false_positives:
+  - A legitimate application doing frequent polling/health-checks against its own uncategorized backend API domain
+  - A single-page web app whose assets/API calls all hit an uncategorized domain rapidly on page load
+references:
+  - https://attack.mitre.org/techniques/T1071/001/
+audit_policy:
+  gpo_path: Web proxy request logging - per-request, not aggregated
+  command: >
+    Ensure the proxy logs every individual request (not just a rolled-up
+    session summary) with domain and category, so request frequency per
+    domain can actually be counted.
+  notes: >
+    "uncategorized" is a deliberately broad selection - most category
+    feeds haven't yet classified brand-new or low-traffic C2
+    infrastructure, so it lands in the uncategorized bucket by default
+    rather than being pre-flagged as malicious.

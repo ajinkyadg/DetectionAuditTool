@@ -1,0 +1,41 @@
+id: WEBPROXY-9002
+title: Access to a Newly Registered Domain
+description: >
+  Detects a request to a domain the proxy has categorized as newly
+  registered (typically registered within the last 30 days). Phishing
+  and C2 infrastructure is disproportionately hosted on freshly
+  registered domains, since older domains are more likely to already be
+  on reputation block lists.
+level: medium
+mitre_attack:
+  - T1566.002
+logsource:
+  category: web_proxy
+event_ids:
+  - "proxy_request"
+detection_type: selection
+selection:
+  action: allowed
+  category: newly-registered-domain
+required_fields:
+  - action
+  - category
+  - domain
+  - user
+false_positives:
+  - A legitimate new vendor, campaign microsite, or internal project domain that simply hasn't aged past the "new" threshold yet
+  - A CDN or link-shortener edge domain that rotates registrations
+references:
+  - https://attack.mitre.org/techniques/T1566/002/
+audit_policy:
+  gpo_path: Web proxy domain-age / newly-registered-domain category feed
+  command: >
+    Enable the proxy's newly-registered-domain or domain-age category
+    (available as a built-in feed on most cloud proxies - Zscaler,
+    Forcepoint, Netskope; on Squid this typically needs an external feed
+    like a WHOIS-age lookup service wired in) and ensure it's logged even
+    when the action taken is "allow with warning."
+  notes: >
+    Low-signal alone - pair with volume (WEBPROXY-9003) or exfil
+    (WEBPROXY-9004) rules for higher-confidence correlation rather than
+    alerting on every hit.
