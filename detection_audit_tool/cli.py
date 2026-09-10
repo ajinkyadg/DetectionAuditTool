@@ -2,6 +2,8 @@
 
     dat rules list [--platform windows]
     dat rules show WIN-1001
+    dat events list [--category "Logon/Logoff"]
+    dat events show 4625
     dat lookup 4625
     dat search "brute force"
     dat simulate brute-force
@@ -19,6 +21,7 @@ import sys
 from typing import List
 
 from .audit import audit_rules
+from .event_catalogue import DEFAULT_CATALOGUE_PATH, find_event, load_windows_events
 from .html_export import export_html
 from .lookup import lookup_event, search
 from .matcher import run_rules
@@ -83,15 +86,63 @@ def cmd_rules_show(args: argparse.Namespace) -> None:
     sys.exit(1)
 
 
+def _print_event_card(event) -> None:
+    print(f"EventID {event.event_id}: {event.name}")
+    print(f"  Category: {event.category} > {event.subcategory}  (criticality: {event.criticality})")
+    if event.description:
+        print(f"  {event.description.strip()}")
+    if event.mitre_attack:
+        print(f"  MITRE ATT&CK: {', '.join(event.mitre_attack)}")
+    if event.key_fields:
+        print("  Key fields:")
+        for f in event.key_fields:
+            print(f"    - {f}")
+    if event.audit_policy:
+        print("  How to enable this audit data:")
+        for key in ("gpo_path", "command", "notes"):
+            if event.audit_policy.get(key):
+                print(f"    {key}: {event.audit_policy[key]}")
+    print()
+
+
+def cmd_events_list(args: argparse.Namespace) -> None:
+    events = load_windows_events(args.events_file)
+    for e in events:
+        if args.category and e.category.lower() != args.category.lower():
+            continue
+        print(f"[{e.event_id}] {e.name}  ({e.category}, criticality={e.criticality})")
+
+
+def cmd_events_show(args: argparse.Namespace) -> None:
+    events = load_windows_events(args.events_file)
+    event = find_event(events, args.event_id)
+    if not event:
+        print(f"no reference entry for event id '{args.event_id}'", file=sys.stderr)
+        sys.exit(1)
+    _print_event_card(event)
+
+
 def cmd_lookup(args: argparse.Namespace) -> None:
     rules = _load(args.rules_dir)
-    matched = lookup_event(rules, args.event_id)
-    if not matched:
-        print(f"no rules reference event id '{args.event_id}'")
+    events = load_windows_events(args.events_file)
+
+    event = find_event(events, args.event_id)
+    matched_rules = lookup_event(rules, args.event_id)
+
+    if not event and not matched_rules:
+        print(f"no reference entry or rules for event id '{args.event_id}'")
         return
-    print(f"Event ID {args.event_id} -> {len(matched)} rule(s)\n")
-    for rule in matched:
-        _print_rule_card(rule)
+
+    if event:
+        print("=== What this event is ===")
+        _print_event_card(event)
+
+    if matched_rules:
+        print(f"=== {len(matched_rules)} detection rule(s) using this event ===\n")
+        for rule in matched_rules:
+            _print_rule_card(rule)
+    else:
+        print("=== No detection rule currently uses this event ===\n")
 
 
 def cmd_search(args: argparse.Namespace) -> None:
@@ -158,13 +209,17 @@ def cmd_audit(args: argparse.Namespace) -> None:
 
 def cmd_export_html(args: argparse.Namespace) -> None:
     rules = _load(args.rules_dir)
-    export_html(rules, args.out)
-    print(f"wrote {len(rules)} rules to {args.out}")
+    events = load_windows_events(args.events_file)
+    export_html(rules, events, args.out)
+    print(f"wrote {len(rules)} rules and {len(events)} reference events to {args.out}")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="dat", description="Detection rule catalogue, simulator, and log auditor")
     parser.add_argument("--rules-dir", default=DEFAULT_RULES_DIR, help="directory of Sigma-style YAML rules")
+    parser.add_argument(
+        "--events-file", default=DEFAULT_CATALOGUE_PATH, help="Windows Security event reference YAML"
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_rules = sub.add_parser("rules", help="browse the rule catalogue")
@@ -176,7 +231,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_rules_show.add_argument("rule_id")
     p_rules_show.set_defaults(func=cmd_rules_show)
 
-    p_lookup = sub.add_parser("lookup", help="find rules by event id / eventName")
+    p_events = sub.add_parser("events", help="browse the Windows Security event reference catalogue")
+    events_sub = p_events.add_subparsers(dest="events_command", required=True)
+    p_events_list = events_sub.add_parser("list", help="list all reference events")
+    p_events_list.add_argument("--category", help="filter by audit category, e.g. 'Logon/Logoff'")
+    p_events_list.set_defaults(func=cmd_events_list)
+    p_events_show = events_sub.add_parser("show", help="show full detail for one event id")
+    p_events_show.add_argument("event_id")
+    p_events_show.set_defaults(func=cmd_events_show)
+
+    p_lookup = sub.add_parser("lookup", help="find rules + reference facts by event id / eventName")
     p_lookup.add_argument("event_id")
     p_lookup.set_defaults(func=cmd_lookup)
 

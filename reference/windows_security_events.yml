@@ -1,0 +1,997 @@
+# Windows Security Event reference catalogue.
+#
+# This is reference/encyclopedia data (facts about each event), separate from
+# rules/ (actual detection logic). Field names match the real Security log
+# XML EventData attribute names (as seen via WEF/Winlogbeat/Sigma), not the
+# human-readable labels ultimatewindowssecurity.com renders them under -
+# e.g. TargetUserName is ultimatewindowssecurity's "New Logon > Account Name".
+#
+# category/subcategory follow Microsoft's Advanced Audit Policy taxonomy.
+# related_rules cross-references rule ids in ../rules/.
+
+- event_id: "4768"
+  name: A Kerberos authentication ticket (TGT) was requested
+  category: Account Logon
+  subcategory: Audit Kerberos Authentication Service
+  criticality: informational
+  description: >
+    Logged on a Domain Controller when a client requests a TGT. Baseline for
+    AS-REP roasting (accounts with Kerberos pre-auth disabled skip the
+    encrypted-timestamp exchange this event records) and for spotting golden
+    ticket abuse (TGTs requested/used outside normal ticket lifetime patterns).
+  key_fields: [TargetUserName, TargetSid, ServiceName, IpAddress, PreAuthType, TicketEncryptionType, Status]
+  sample_log:
+    EventID: 4768
+    TimeCreated: "2026-01-15T09:00:12+00:00"
+    TargetUserName: jsmith
+    TargetSid: S-1-5-21-3623811015-3361044348-30300820-1104
+    ServiceName: krbtgt
+    IpAddress: "10.20.5.14"
+    PreAuthType: "2"
+    TicketEncryptionType: "0x12"
+    Status: "0x0"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Account Logon > Audit Kerberos Authentication Service
+    command: auditpol /set /subcategory:"Kerberos Authentication Service" /success:enable /failure:enable
+    notes: Domain Controllers only - this event never appears on member servers/workstations.
+  mitre_attack: [T1558, T1558.004]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4768"]
+
+- event_id: "4769"
+  name: A Kerberos service ticket was requested
+  category: Account Logon
+  subcategory: Audit Kerberos Service Ticket Operations
+  criticality: informational
+  description: >
+    Logged when a client requests a service ticket for a specific SPN. The
+    core signal for Kerberoasting: many 4769s for different service SPNs from
+    one account in a short window, with TicketEncryptionType 0x17 (RC4),
+    is the classic offline-crackable-ticket harvesting pattern.
+  key_fields: [TargetUserName, ServiceName, ServiceSid, IpAddress, TicketEncryptionType, TicketOptions, Status]
+  sample_log:
+    EventID: 4769
+    TimeCreated: "2026-01-15T09:01:40+00:00"
+    TargetUserName: svc_sql
+    ServiceName: MSSQLSvc/db01.corp.local
+    IpAddress: "10.20.5.14"
+    TicketEncryptionType: "0x17"
+    TicketOptions: "0x40810000"
+    Status: "0x0"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Account Logon > Audit Kerberos Service Ticket Operations
+    command: auditpol /set /subcategory:"Kerberos Service Ticket Operations" /success:enable /failure:enable
+    notes: Domain Controllers only. High volume subcategory - budget log storage before enabling failure auditing broadly.
+  mitre_attack: [T1558.003]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4769"]
+
+- event_id: "4770"
+  name: A Kerberos service ticket was renewed
+  category: Account Logon
+  subcategory: Audit Kerberos Service Ticket Operations
+  criticality: informational
+  description: Logged when an existing service ticket is renewed rather than freshly issued. Useful for baselining long-lived sessions/service accounts.
+  key_fields: [TargetUserName, ServiceName, IpAddress, TicketEncryptionType]
+  sample_log:
+    EventID: 4770
+    TimeCreated: "2026-01-15T14:55:02+00:00"
+    TargetUserName: svc_sql
+    ServiceName: MSSQLSvc/db01.corp.local
+    IpAddress: "10.20.5.14"
+    TicketEncryptionType: "0x12"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Account Logon > Audit Kerberos Service Ticket Operations
+    command: auditpol /set /subcategory:"Kerberos Service Ticket Operations" /success:enable /failure:enable
+    notes: Domain Controllers only.
+  mitre_attack: []
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4770"]
+
+- event_id: "4771"
+  name: Kerberos pre-authentication failed
+  category: Account Logon
+  subcategory: Audit Kerberos Authentication Service
+  criticality: high
+  description: >
+    The Kerberos-side equivalent of 4625 - a bad password/expired credential
+    presented directly to a Domain Controller. FailureCode 0x18 is bad
+    password; a burst of these against one account, or one account probing
+    many usernames, is a password spray or brute force hitting Kerberos
+    instead of NTLM.
+  key_fields: [TargetUserName, IpAddress, FailureCode, PreAuthType]
+  sample_log:
+    EventID: 4771
+    TimeCreated: "2026-01-15T09:12:00+00:00"
+    TargetUserName: jsmith
+    IpAddress: "203.0.113.55"
+    FailureCode: "0x18"
+    PreAuthType: "2"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Account Logon > Audit Kerberos Authentication Service
+    command: auditpol /set /subcategory:"Kerberos Authentication Service" /success:enable /failure:enable
+    notes: Domain Controllers only. TargetSid is not populated here (unlike 4768) since auth failed before the account was resolved.
+  mitre_attack: [T1110]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4771"]
+
+- event_id: "4776"
+  name: The domain controller attempted to validate the credentials for an account (NTLM)
+  category: Account Logon
+  subcategory: Audit Credential Validation
+  criticality: high
+  description: >
+    Logged when NTLM (not Kerberos) is used to authenticate against a DC.
+    ErrorCode 0xC000006A is a bad password - the NTLM-path equivalent of 4771,
+    and often the only DC-side signal for legacy-protocol brute forcing.
+  key_fields: [TargetUserName, Workstation, ErrorCode]
+  sample_log:
+    EventID: 4776
+    TimeCreated: "2026-01-15T09:12:05+00:00"
+    TargetUserName: jsmith
+    Workstation: WKSTN01
+    ErrorCode: "0xC000006A"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Account Logon > Audit Credential Validation
+    command: auditpol /set /subcategory:"Credential Validation" /success:enable /failure:enable
+    notes: Domain Controllers only. High volume of NTLM traffic in a mostly-Kerberos environment is itself worth alerting on (T1550 fallback abuse).
+  mitre_attack: [T1110]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4776"]
+
+- event_id: "4624"
+  name: An account was successfully logged on
+  category: Logon/Logoff
+  subcategory: Audit Logon
+  criticality: informational
+  description: >
+    Generated whenever a logon session is created - interactive, network,
+    service, batch, RDP, unlock, etc (see LogonType). Not inherently
+    malicious; it's the anchor event for correlating what an authenticated
+    principal subsequently did, and the "attacker got in" half of a brute
+    force cycle.
+  key_fields: [TargetUserName, TargetSid, TargetDomainName, LogonType, IpAddress, WorkstationName, LogonProcessName, AuthenticationPackageName]
+  logon_types: {"2": Interactive, "3": Network, "4": Batch, "5": Service, "7": Unlock, "8": NetworkCleartext, "9": NewCredentials, "10": "RemoteInteractive (RDP)", "11": CachedInteractive}
+  sample_log:
+    EventID: 4624
+    TimeCreated: "2026-01-15T09:12:03+00:00"
+    TargetUserName: jsmith
+    TargetSid: S-1-5-21-3623811015-3361044348-30300820-1104
+    TargetDomainName: CORP
+    LogonType: 3
+    IpAddress: "10.20.5.14"
+    WorkstationName: WKSTN01
+    LogonProcessName: NtLmSsp
+    AuthenticationPackageName: NTLM
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Logon/Logoff > Audit Logon
+    command: auditpol /set /subcategory:"Logon" /success:enable /failure:enable
+    notes: Enabled by default on modern Windows; confirm it hasn't been overridden by a legacy GPO. Present on every host, not just DCs.
+  mitre_attack: [T1078]
+  related_rules: [WIN-1001, WIN-1002]
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4624"]
+
+- event_id: "4625"
+  name: An account failed to log on
+  category: Logon/Logoff
+  subcategory: Audit Logon
+  criticality: high
+  description: >
+    Generated on every failed logon attempt. TargetSid is S-1-0-0
+    (unresolved) because Windows never matched the credential to a real
+    account - correlate brute force / password spray by TargetUserName and
+    IpAddress, not by SID.
+  key_fields: [TargetUserName, IpAddress, LogonType, FailureReason, SubStatus, WorkstationName]
+  sample_log:
+    EventID: 4625
+    TimeCreated: "2026-01-15T09:11:30+00:00"
+    TargetUserName: jsmith
+    TargetSid: S-1-0-0
+    IpAddress: "203.0.113.55"
+    LogonType: 3
+    WorkstationName: WKSTN01
+    FailureReason: "%%2313"
+    SubStatus: "0xC000006A"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Logon/Logoff > Audit Logon
+    command: auditpol /set /subcategory:"Logon" /success:enable /failure:enable
+    notes: Enabled by default. Present on every host - filter by LogonType to separate console/RDP/network brute forcing.
+  mitre_attack: [T1110, T1110.001]
+  related_rules: [WIN-1001, WIN-1002]
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4625"]
+
+- event_id: "4634"
+  name: An account was logged off
+  category: Logon/Logoff
+  subcategory: Audit Logon
+  criticality: informational
+  description: Closes out the logon session opened by a 4624 - pair them (same TargetLogonId) to measure session duration.
+  key_fields: [TargetUserName, TargetSid, LogonType, TargetLogonId]
+  sample_log:
+    EventID: 4634
+    TimeCreated: "2026-01-15T09:45:00+00:00"
+    TargetUserName: jsmith
+    TargetSid: S-1-5-21-3623811015-3361044348-30300820-1104
+    LogonType: 3
+    TargetLogonId: "0x3e7a1c2"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Logon/Logoff > Audit Logon
+    command: auditpol /set /subcategory:"Logon" /success:enable /failure:enable
+    notes: Same subcategory as 4624/4625.
+  mitre_attack: []
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4634"]
+
+- event_id: "4647"
+  name: User initiated logoff
+  category: Logon/Logoff
+  subcategory: Audit Logoff
+  criticality: informational
+  description: Logged when a user deliberately logs off (vs. session just ending/timing out, which is 4634).
+  key_fields: [TargetUserName, TargetSid, TargetLogonId]
+  sample_log:
+    EventID: 4647
+    TimeCreated: "2026-01-15T09:44:58+00:00"
+    TargetUserName: jsmith
+    TargetSid: S-1-5-21-3623811015-3361044348-30300820-1104
+    TargetLogonId: "0x3e7a1c2"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Logon/Logoff > Audit Logoff
+    command: auditpol /set /subcategory:"Logoff" /success:enable
+    notes: Separate subcategory from Logon ("Audit Logoff").
+  mitre_attack: []
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4647"]
+
+- event_id: "4648"
+  name: A logon was attempted using explicit credentials
+  category: Logon/Logoff
+  subcategory: Audit Logon
+  criticality: high
+  description: >
+    Logged whenever a process runs as a different account than the one that
+    launched it (runas, "Run as different user", scheduled tasks with stored
+    creds, PsExec with -u). One of the strongest lateral-movement /
+    credential-reuse signals in the log - the SubjectUserName is the account
+    that already had a session; TargetUserName is the credential being used.
+  key_fields: [SubjectUserName, SubjectUserSid, TargetUserName, TargetServerName, IpAddress, ProcessName]
+  sample_log:
+    EventID: 4648
+    TimeCreated: "2026-01-15T10:03:11+00:00"
+    SubjectUserName: jsmith
+    SubjectUserSid: S-1-5-21-3623811015-3361044348-30300820-1104
+    TargetUserName: svc_backup
+    TargetServerName: fileserver01.corp.local
+    IpAddress: "10.20.5.14"
+    ProcessName: C:\Windows\System32\runas.exe
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Logon/Logoff > Audit Logon
+    command: auditpol /set /subcategory:"Logon" /success:enable /failure:enable
+    notes: Same subcategory as 4624. Watch for a normal user's SubjectUserName paired with a privileged/service TargetUserName.
+  mitre_attack: [T1078, T1550]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4648"]
+
+- event_id: "4672"
+  name: Special privileges assigned to new logon
+  category: Logon/Logoff
+  subcategory: Audit Special Logon
+  criticality: medium
+  description: >
+    Fires immediately after a 4624 when the new session holds admin-tier
+    privileges (SeDebugPrivilege, SeTcbPrivilege, etc). Correlate with the
+    matching 4624 by TargetLogonId to see exactly who just got an elevated
+    session and from where.
+  key_fields: [SubjectUserName, SubjectUserSid, PrivilegeList]
+  sample_log:
+    EventID: 4672
+    TimeCreated: "2026-01-15T10:03:11+00:00"
+    SubjectUserName: svc_backup
+    SubjectUserSid: S-1-5-21-3623811015-3361044348-30300820-1500
+    PrivilegeList: SeDebugPrivilege SeBackupPrivilege SeRestorePrivilege
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Logon/Logoff > Audit Special Logon
+    command: auditpol /set /subcategory:"Special Logon" /success:enable
+    notes: Enabled by default on modern Windows.
+  mitre_attack: [T1078]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4672"]
+
+- event_id: "4778"
+  name: A session was reconnected to a Window Station (RDP reconnect)
+  category: Logon/Logoff
+  subcategory: Audit Other Logon/Logoff Events
+  criticality: informational
+  description: Logged when an RDP session reconnects (e.g. after a network blip or disconnect-without-logoff).
+  key_fields: [AccountName, AccountDomain, ClientName, ClientAddress]
+  sample_log:
+    EventID: 4778
+    TimeCreated: "2026-01-15T11:00:00+00:00"
+    AccountName: jsmith
+    AccountDomain: CORP
+    ClientName: WKSTN01
+    ClientAddress: "10.20.5.14"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Logon/Logoff > Audit Other Logon/Logoff Events
+    command: auditpol /set /subcategory:"Other Logon/Logoff Events" /success:enable /failure:enable
+  mitre_attack: [T1021.001]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4778"]
+
+- event_id: "4779"
+  name: A session was disconnected from a Window Station (RDP disconnect)
+  category: Logon/Logoff
+  subcategory: Audit Other Logon/Logoff Events
+  criticality: informational
+  description: Pairs with 4778 - the RDP session went to disconnected state without a full logoff.
+  key_fields: [AccountName, AccountDomain, ClientName, ClientAddress]
+  sample_log:
+    EventID: 4779
+    TimeCreated: "2026-01-15T11:30:00+00:00"
+    AccountName: jsmith
+    AccountDomain: CORP
+    ClientName: WKSTN01
+    ClientAddress: "10.20.5.14"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Logon/Logoff > Audit Other Logon/Logoff Events
+    command: auditpol /set /subcategory:"Other Logon/Logoff Events" /success:enable /failure:enable
+  mitre_attack: [T1021.001]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4779"]
+
+- event_id: "4964"
+  name: Special groups have been assigned to a new logon
+  category: Logon/Logoff
+  subcategory: Audit Special Logon
+  criticality: medium
+  description: Fires when a logon's membership includes groups you've explicitly flagged as "special" via the SpecialGroups registry list (commonly Domain Admins). A cheap tripwire for admin-group logons anywhere in the environment.
+  key_fields: [TargetUserName, SpecialGroups]
+  sample_log:
+    EventID: 4964
+    TimeCreated: "2026-01-15T10:03:11+00:00"
+    TargetUserName: svc_backup
+    SpecialGroups: S-1-5-21-3623811015-3361044348-30300820-512
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Logon/Logoff > Audit Special Logon
+    command: auditpol /set /subcategory:"Special Logon" /success:enable
+    notes: Requires the SpecialGroups list to be populated in the registry (SpecialGroups key under Lsa\Audit) in addition to enabling the subcategory.
+  mitre_attack: [T1078]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4964"]
+
+- event_id: "4720"
+  name: A user account was created
+  category: Account Management
+  subcategory: Audit User Account Management
+  criticality: high
+  description: Fires on every local or AD user creation. In a mature environment this should almost always correlate to an approved IT-provisioning ticket - unexplained 4720s are a top persistence indicator.
+  key_fields: [SubjectUserName, SubjectUserSid, TargetUserName, TargetSid]
+  sample_log:
+    EventID: 4720
+    TimeCreated: "2026-01-15T13:00:00+00:00"
+    SubjectUserName: admin_bob
+    SubjectUserSid: S-1-5-21-3623811015-3361044348-30300820-500
+    TargetUserName: svc_temp
+    TargetSid: S-1-5-21-3623811015-3361044348-30300820-1601
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Account Management > Audit User Account Management
+    command: auditpol /set /subcategory:"User Account Management" /success:enable /failure:enable
+  mitre_attack: [T1136, T1136.001]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4720"]
+
+- event_id: "4722"
+  name: A user account was enabled
+  category: Account Management
+  subcategory: Audit User Account Management
+  criticality: medium
+  description: Often paired with reactivating a stale/disabled account - a common technique for using a "forgotten" account instead of creating a new one.
+  key_fields: [SubjectUserName, TargetUserName, TargetSid]
+  sample_log:
+    EventID: 4722
+    TimeCreated: "2026-01-15T13:05:00+00:00"
+    SubjectUserName: admin_bob
+    TargetUserName: old_contractor
+    TargetSid: S-1-5-21-3623811015-3361044348-30300820-1450
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Account Management > Audit User Account Management
+    command: auditpol /set /subcategory:"User Account Management" /success:enable /failure:enable
+  mitre_attack: [T1078, T1098]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4722"]
+
+- event_id: "4724"
+  name: An attempt was made to reset an account's password
+  category: Account Management
+  subcategory: Audit User Account Management
+  criticality: high
+  description: Someone other than the account owner reset the password - legitimate for helpdesk resets, but also how an attacker who has compromised an admin account takes over a target account without knowing its current password.
+  key_fields: [SubjectUserName, TargetUserName, TargetSid]
+  sample_log:
+    EventID: 4724
+    TimeCreated: "2026-01-15T13:10:00+00:00"
+    SubjectUserName: admin_bob
+    TargetUserName: jsmith
+    TargetSid: S-1-5-21-3623811015-3361044348-30300820-1104
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Account Management > Audit User Account Management
+    command: auditpol /set /subcategory:"User Account Management" /success:enable /failure:enable
+  mitre_attack: [T1098]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4724"]
+
+- event_id: "4725"
+  name: A user account was disabled
+  category: Account Management
+  subcategory: Audit User Account Management
+  criticality: medium
+  description: Legitimate for offboarding; unexpected disabling of an active account (e.g. a security analyst's own account) can indicate an attacker suppressing response capability.
+  key_fields: [SubjectUserName, TargetUserName, TargetSid]
+  sample_log:
+    EventID: 4725
+    TimeCreated: "2026-01-15T13:15:00+00:00"
+    SubjectUserName: admin_bob
+    TargetUserName: former_employee
+    TargetSid: S-1-5-21-3623811015-3361044348-30300820-1399
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Account Management > Audit User Account Management
+    command: auditpol /set /subcategory:"User Account Management" /success:enable /failure:enable
+  mitre_attack: [T1531]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4725"]
+
+- event_id: "4726"
+  name: A user account was deleted
+  category: Account Management
+  subcategory: Audit User Account Management
+  criticality: high
+  description: Legitimate offboarding cleanup, or an attacker deleting an account to destroy evidence/deny recovery (e.g. deleting the account they created and abused).
+  key_fields: [SubjectUserName, TargetUserName, TargetSid]
+  sample_log:
+    EventID: 4726
+    TimeCreated: "2026-01-15T18:00:00+00:00"
+    SubjectUserName: svc_temp
+    TargetUserName: svc_temp
+    TargetSid: S-1-5-21-3623811015-3361044348-30300820-1601
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Account Management > Audit User Account Management
+    command: auditpol /set /subcategory:"User Account Management" /success:enable /failure:enable
+    notes: An account deleting itself (Subject == Target) shortly after creation is a strong self-cleanup signal - correlate with the 4720 for the same TargetSid.
+  mitre_attack: [T1531, T1070]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4726"]
+
+- event_id: "4728"
+  name: A member was added to a security-enabled global group
+  category: Account Management
+  subcategory: Audit Security Group Management
+  criticality: critical
+  description: Global groups include Domain Admins - this is one of the highest-value events in the log for catching privilege escalation via group membership.
+  key_fields: [SubjectUserName, TargetUserName, MemberSid, GroupName]
+  sample_log:
+    EventID: 4728
+    TimeCreated: "2026-01-15T14:00:00+00:00"
+    SubjectUserName: admin_bob
+    MemberSid: S-1-5-21-3623811015-3361044348-30300820-1601
+    GroupName: Domain Admins
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Account Management > Audit Security Group Management
+    command: auditpol /set /subcategory:"Security Group Management" /success:enable /failure:enable
+  mitre_attack: [T1098, T1078]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4728"]
+
+- event_id: "4732"
+  name: A member was added to a security-enabled local group
+  category: Account Management
+  subcategory: Audit Security Group Management
+  criticality: critical
+  description: The classic "added to local Administrators group" privilege escalation event, on whichever host the group lives on.
+  key_fields: [SubjectUserName, TargetUserName, MemberSid, GroupName]
+  sample_log:
+    EventID: 4732
+    TimeCreated: "2026-01-15T10:04:00+00:00"
+    SubjectUserName: svc_backup
+    MemberSid: S-1-5-21-3623811015-3361044348-30300820-1104
+    GroupName: Administrators
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Account Management > Audit Security Group Management
+    command: auditpol /set /subcategory:"Security Group Management" /success:enable /failure:enable
+  mitre_attack: [T1098, T1078]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4732"]
+
+- event_id: "4738"
+  name: A user account was changed
+  category: Account Management
+  subcategory: Audit User Account Management
+  criticality: medium
+  description: >
+    Fires on many kinds of account modification (UAC flags, script path, home
+    directory, etc). Watch specifically for changes that disable Kerberos
+    pre-auth (enabling AS-REP roasting) or clear the "password never expires"/
+    "smartcard required" flags.
+  key_fields: [SubjectUserName, TargetUserName, TargetSid, UserAccountControl]
+  sample_log:
+    EventID: 4738
+    TimeCreated: "2026-01-15T14:30:00+00:00"
+    SubjectUserName: admin_bob
+    TargetUserName: jsmith
+    TargetSid: S-1-5-21-3623811015-3361044348-30300820-1104
+    UserAccountControl: "%%2089"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Account Management > Audit User Account Management
+    command: auditpol /set /subcategory:"User Account Management" /success:enable /failure:enable
+  mitre_attack: [T1098, T1558.004]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4738"]
+
+- event_id: "4740"
+  name: A user account was locked out
+  category: Account Management
+  subcategory: Audit User Account Management
+  criticality: high
+  description: A side effect of a brute force/password spray hitting the account lockout threshold - a reliable secondary signal alongside 4625/4771 bursts, and one that fires even if failed-logon auditing is misconfigured on the target host.
+  key_fields: [TargetUserName, TargetSid, CallerComputerName]
+  sample_log:
+    EventID: 4740
+    TimeCreated: "2026-01-15T09:13:00+00:00"
+    TargetUserName: jsmith
+    TargetSid: S-1-5-21-3623811015-3361044348-30300820-1104
+    CallerComputerName: WKSTN01
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Account Management > Audit User Account Management
+    command: auditpol /set /subcategory:"User Account Management" /success:enable /failure:enable
+    notes: Only logged on the Domain Controller that processed the lockout, and only if an account lockout policy is actually configured (Default Domain Policy > Account Lockout Threshold > 0).
+  mitre_attack: [T1110]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4740"]
+
+- event_id: "4688"
+  name: A new process has been created
+  category: Detailed Tracking
+  subcategory: Audit Process Creation
+  criticality: informational
+  description: >
+    The closest thing the native Security log has to EDR-style process
+    telemetry. With command-line auditing also enabled, this is the backbone
+    for detecting LOLBin abuse, encoded PowerShell, and suspicious
+    parent/child process chains (e.g. winword.exe spawning cmd.exe).
+  key_fields: [SubjectUserName, NewProcessName, CommandLine, ParentProcessName, TokenElevationType]
+  sample_log:
+    EventID: 4688
+    TimeCreated: "2026-01-15T10:05:00+00:00"
+    SubjectUserName: svc_backup
+    NewProcessName: C:\Windows\System32\cmd.exe
+    CommandLine: cmd.exe /c whoami /all
+    ParentProcessName: C:\Windows\System32\svchost.exe
+    TokenElevationType: "%%1936"
+  audit_policy:
+    gpo_path: >
+      Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Detailed Tracking > Audit Process Creation,
+      plus Administrative Templates > System > Audit Process Creation > Include command line in process creation events
+    command: auditpol /set /subcategory:"Process Creation" /success:enable
+    notes: The CommandLine field is empty unless the "Include command line" policy is separately enabled - a very common gap to check for during onboarding.
+  mitre_attack: [T1059]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4688"]
+
+- event_id: "4689"
+  name: A process has exited
+  category: Detailed Tracking
+  subcategory: Audit Process Termination
+  criticality: informational
+  description: Pairs with 4688 to measure process lifetime; rarely alerted on directly, but useful for confirming a suspicious process actually ran to completion (vs. being blocked/killed).
+  key_fields: [SubjectUserName, ProcessName, ExitStatus]
+  sample_log:
+    EventID: 4689
+    TimeCreated: "2026-01-15T10:05:02+00:00"
+    SubjectUserName: svc_backup
+    ProcessName: C:\Windows\System32\cmd.exe
+    ExitStatus: "0x0"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Detailed Tracking > Audit Process Termination
+    command: auditpol /set /subcategory:"Process Termination" /success:enable
+  mitre_attack: []
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4689"]
+
+- event_id: "4698"
+  name: A scheduled task was created
+  category: Detailed Tracking
+  subcategory: Audit Other Object Access Events
+  criticality: high
+  description: A top persistence mechanism - attackers register a scheduled task to re-execute a payload on logon/reboot/interval. TaskContent carries the full task XML including the action to run.
+  key_fields: [SubjectUserName, TaskName, TaskContent]
+  sample_log:
+    EventID: 4698
+    TimeCreated: "2026-01-15T18:10:00+00:00"
+    SubjectUserName: svc_temp
+    TaskName: \Microsoft\Windows\UpdateOrchestrator\Refresh
+    TaskContent: <Exec><Command>powershell.exe</Command><Arguments>-enc SQBFAFgA...</Arguments></Exec>
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Detailed Tracking > Audit Other Object Access Events
+    command: auditpol /set /subcategory:"Other Object Access Events" /success:enable /failure:enable
+    notes: This subcategory also covers COM+ and other object access events, so expect some noise beyond scheduled tasks.
+  mitre_attack: [T1053.005]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4698"]
+
+- event_id: "4699"
+  name: A scheduled task was deleted
+  category: Detailed Tracking
+  subcategory: Audit Other Object Access Events
+  criticality: medium
+  description: Often paired with a 4698 shortly before - an attacker registering, running, then deleting a scheduled task to remove the persistence artifact.
+  key_fields: [SubjectUserName, TaskName]
+  sample_log:
+    EventID: 4699
+    TimeCreated: "2026-01-15T18:40:00+00:00"
+    SubjectUserName: svc_temp
+    TaskName: \Microsoft\Windows\UpdateOrchestrator\Refresh
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Detailed Tracking > Audit Other Object Access Events
+    command: auditpol /set /subcategory:"Other Object Access Events" /success:enable /failure:enable
+  mitre_attack: [T1053.005, T1070]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4699"]
+
+- event_id: "4662"
+  name: An operation was performed on an object (Active Directory)
+  category: DS Access
+  subcategory: Audit Directory Service Access
+  criticality: critical
+  description: >
+    Fires when a specific access right is exercised against an AD object's
+    SACL. With the "Replicating Directory Changes" / "Replicating Directory
+    Changes All" extended-right GUIDs in the Properties field, this is the
+    primary detection point for DCSync - a non-DC principal invoking AD
+    replication to dump password hashes.
+  key_fields: [SubjectUserName, SubjectUserSid, ObjectType, Properties, AccessMask]
+  sample_log:
+    EventID: 4662
+    TimeCreated: "2026-01-15T19:00:00+00:00"
+    SubjectUserName: svc_backup
+    SubjectUserSid: S-1-5-21-3623811015-3361044348-30300820-1500
+    ObjectType: "%%7791"
+    Properties: "{1131f6aa-9c07-11d1-f79f-00c04fc2dcd2} {1131f6ad-9c07-11d1-f79f-00c04fc2dcd2}"
+    AccessMask: "0x100"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > DS Access > Audit Directory Service Access
+    command: auditpol /set /subcategory:"Directory Service Access" /success:enable /failure:enable
+    notes: Also requires a SACL configured on the domain root object auditing the two Replicating-Changes extended rights - subcategory alone is not enough.
+  mitre_attack: [T1003.006]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4662"]
+
+- event_id: "5136"
+  name: A directory service object was modified
+  category: DS Access
+  subcategory: Audit Directory Service Changes
+  criticality: high
+  description: Captures the actual attribute-level change to an AD object (which attribute, old/new value) - e.g. a GPO link change, an ACL modification, or a sensitive attribute like msDS-AllowedToDelegateTo being set (resource-based constrained delegation abuse).
+  key_fields: [SubjectUserName, ObjectDN, AttributeLDAPDisplayName, AttributeValue]
+  sample_log:
+    EventID: 5136
+    TimeCreated: "2026-01-15T19:05:00+00:00"
+    SubjectUserName: admin_bob
+    ObjectDN: CN=WKSTN01,OU=Workstations,DC=corp,DC=local
+    AttributeLDAPDisplayName: msDS-AllowedToActOnBehalfOfOtherIdentity
+    AttributeValue: (binary SD)
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > DS Access > Audit Directory Service Changes
+    command: auditpol /set /subcategory:"Directory Service Changes" /success:enable /failure:enable
+  mitre_attack: [T1098, T1207]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=5136"]
+
+- event_id: "4656"
+  name: A handle to an object was requested
+  category: Object Access
+  subcategory: Audit File System / Audit Registry
+  criticality: informational
+  description: Logged when a process requests a handle to a file, registry key, or other securable object that has a SACL configured. Precedes 4663 (the actual access) - both require the object's own SACL, not just the subcategory.
+  key_fields: [SubjectUserName, ObjectName, ObjectType, AccessMask, ProcessName]
+  sample_log:
+    EventID: 4656
+    TimeCreated: "2026-01-15T20:00:00+00:00"
+    SubjectUserName: svc_backup
+    ObjectName: C:\FinanceShare\payroll.xlsx
+    ObjectType: File
+    AccessMask: "0x10000"
+    ProcessName: C:\Windows\explorer.exe
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Object Access > Audit File System (or Audit Registry)
+    command: auditpol /set /subcategory:"File System" /success:enable /failure:enable
+    notes: No events appear until you also add a SACL to the specific file/folder/registry key you want audited - enabling the subcategory alone produces nothing.
+  mitre_attack: [T1005]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4656"]
+
+- event_id: "4663"
+  name: An attempt was made to access an object
+  category: Object Access
+  subcategory: Audit File System / Audit Registry
+  criticality: medium
+  description: The actual access recorded against an audited (SACL'd) file, folder, or registry key - e.g. read/write/delete on a sensitive document share.
+  key_fields: [SubjectUserName, ObjectName, AccessMask, ProcessName]
+  sample_log:
+    EventID: 4663
+    TimeCreated: "2026-01-15T20:00:01+00:00"
+    SubjectUserName: svc_backup
+    ObjectName: C:\FinanceShare\payroll.xlsx
+    AccessMask: "0x1"
+    ProcessName: C:\Windows\explorer.exe
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Object Access > Audit File System (or Audit Registry)
+    command: auditpol /set /subcategory:"File System" /success:enable /failure:enable
+    notes: Same SACL requirement as 4656.
+  mitre_attack: [T1005]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4663"]
+
+- event_id: "4657"
+  name: A registry value was modified
+  category: Object Access
+  subcategory: Audit Registry
+  criticality: high
+  description: >
+    Fires on a change to a specifically audited registry value - a common
+    detection point for persistence via Run keys, service ImagePath
+    hijacking, or LSA/Winlogon notification-package abuse.
+  key_fields: [SubjectUserName, ObjectName, OldValue, NewValue, ProcessName]
+  sample_log:
+    EventID: 4657
+    TimeCreated: "2026-01-15T18:15:00+00:00"
+    SubjectUserName: svc_temp
+    ObjectName: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\UpdateCheck
+    NewValue: powershell.exe -enc SQBFAFgA...
+    ProcessName: C:\Windows\System32\reg.exe
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Object Access > Audit Registry
+    command: auditpol /set /subcategory:"Registry" /success:enable /failure:enable
+    notes: Requires a SACL on the specific registry key (e.g. the Run key) in addition to the subcategory.
+  mitre_attack: [T1547.001]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4657"]
+
+- event_id: "5140"
+  name: A network share object was accessed
+  category: Object Access
+  subcategory: Audit File Share
+  criticality: medium
+  description: Logged whenever a network share (e.g. \\server\share) is accessed - useful for tracking lateral movement over SMB and mapping who touched admin shares (C$, ADMIN$).
+  key_fields: [SubjectUserName, IpAddress, ShareName]
+  sample_log:
+    EventID: 5140
+    TimeCreated: "2026-01-15T10:06:00+00:00"
+    SubjectUserName: svc_backup
+    IpAddress: "10.20.5.20"
+    ShareName: \\fileserver01\ADMIN$
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Object Access > Audit File Share
+    command: auditpol /set /subcategory:"File Share" /success:enable /failure:enable
+    notes: Enabled by default on Server SKUs in many recent Windows Server versions - verify rather than assume.
+  mitre_attack: [T1021.002]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=5140"]
+
+- event_id: "5145"
+  name: A network share object was checked to see whether client can be granted desired access
+  category: Object Access
+  subcategory: Audit Detailed File Share
+  criticality: informational
+  description: The "detailed" sibling of 5140 - includes the specific relative file path and access mask requested within the share, at much higher volume.
+  key_fields: [SubjectUserName, IpAddress, ShareName, RelativeTargetName, AccessMask]
+  sample_log:
+    EventID: 5145
+    TimeCreated: "2026-01-15T10:06:01+00:00"
+    SubjectUserName: svc_backup
+    IpAddress: "10.20.5.20"
+    ShareName: \\fileserver01\ADMIN$
+    RelativeTargetName: System32\psexesvc.exe
+    AccessMask: "0x2"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Object Access > Audit Detailed File Share
+    command: auditpol /set /subcategory:"Detailed File Share" /success:enable /failure:enable
+    notes: Very high volume - enable selectively on servers you're actively hunting on (e.g. suspected PsExec staging hosts), not fleet-wide by default.
+  mitre_attack: [T1021.002, T1570]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=5145"]
+
+- event_id: "4719"
+  name: System audit policy was changed
+  category: Policy Change
+  subcategory: Audit Audit Policy Change
+  criticality: critical
+  description: >
+    An attacker (or misconfigured automation) turning off auditing to blind
+    the SOC before doing something noisy. One of the highest-value "someone
+    is tampering with detection" events in the entire log.
+  key_fields: [SubjectUserName, SubjectUserSid, SubcategoryList, AuditPolicyChanges]
+  sample_log:
+    EventID: 4719
+    TimeCreated: "2026-01-15T20:30:00+00:00"
+    SubjectUserName: admin_bob
+    SubjectUserSid: S-1-5-21-3623811015-3361044348-30300820-500
+    SubcategoryList: Logon
+    AuditPolicyChanges: "%%8448"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Policy Change > Audit Audit Policy Change
+    command: auditpol /set /subcategory:"Audit Policy Change" /success:enable /failure:enable
+    notes: Enabled by default - if this event stream ever goes quiet on a host, that silence is itself the alert.
+  mitre_attack: [T1562.002]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4719"]
+
+- event_id: "4713"
+  name: Kerberos policy was changed
+  category: Policy Change
+  subcategory: Audit Authentication Policy Change
+  criticality: medium
+  description: Changes to domain Kerberos policy (ticket lifetimes, encryption types) - rare in steady state, worth an alert whenever it fires outside a change window.
+  key_fields: [SubjectUserName, SubjectUserSid]
+  sample_log:
+    EventID: 4713
+    TimeCreated: "2026-01-15T20:35:00+00:00"
+    SubjectUserName: admin_bob
+    SubjectUserSid: S-1-5-21-3623811015-3361044348-30300820-500
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Policy Change > Audit Authentication Policy Change
+    command: auditpol /set /subcategory:"Authentication Policy Change" /success:enable /failure:enable
+  mitre_attack: [T1484]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4713"]
+
+- event_id: "4670"
+  name: Permissions on an object were changed
+  category: Policy Change
+  subcategory: Audit Authorization Policy Change
+  criticality: high
+  description: Logged when a file/registry/AD object's DACL is modified - e.g. an attacker granting themselves permissions on a sensitive object, or weakening a service's ACL to hijack it.
+  key_fields: [SubjectUserName, ObjectName, OldSd, NewSd]
+  sample_log:
+    EventID: 4670
+    TimeCreated: "2026-01-15T20:40:00+00:00"
+    SubjectUserName: svc_backup
+    ObjectName: C:\Windows\System32\spoolsv.exe
+    OldSd: (SDDL string)
+    NewSd: (SDDL string)
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Policy Change > Audit Authorization Policy Change
+    command: auditpol /set /subcategory:"Authorization Policy Change" /success:enable /failure:enable
+  mitre_attack: [T1222]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4670"]
+
+- event_id: "4673"
+  name: A privileged service was called
+  category: Privilege Use
+  subcategory: Audit Sensitive Privilege Use
+  criticality: medium
+  description: Logged when a process exercises a sensitive privilege such as SeDebugPrivilege or SeTcbPrivilege via a privileged Windows API/service call - a common signal for credential-dumping tools that need SeDebugPrivilege to read LSASS memory.
+  key_fields: [SubjectUserName, PrivilegeList, Service]
+  sample_log:
+    EventID: 4673
+    TimeCreated: "2026-01-15T20:45:00+00:00"
+    SubjectUserName: svc_backup
+    PrivilegeList: SeDebugPrivilege
+    Service: NtOpenProcess
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Privilege Use > Audit Sensitive Privilege Use
+    command: auditpol /set /subcategory:"Sensitive Privilege Use" /success:enable /failure:enable
+    notes: High volume subcategory (backup software and AV also use these privileges legitimately) - baseline before alerting broadly.
+  mitre_attack: [T1003.001]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4673"]
+
+- event_id: "4674"
+  name: An operation was attempted on a privileged object
+  category: Privilege Use
+  subcategory: Audit Sensitive Privilege Use
+  criticality: medium
+  description: Sibling of 4673 for object-handle-based privileged operations rather than direct API calls - e.g. opening a handle to the LSASS process itself.
+  key_fields: [SubjectUserName, ObjectName, ObjectType, PrivilegeList]
+  sample_log:
+    EventID: 4674
+    TimeCreated: "2026-01-15T20:45:05+00:00"
+    SubjectUserName: svc_backup
+    ObjectName: C:\Windows\System32\lsass.exe
+    ObjectType: Process
+    PrivilegeList: SeDebugPrivilege
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > Privilege Use > Audit Sensitive Privilege Use
+    command: auditpol /set /subcategory:"Sensitive Privilege Use" /success:enable /failure:enable
+  mitre_attack: [T1003.001]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4674"]
+
+- event_id: "4608"
+  name: Windows is starting up
+  category: System
+  subcategory: Audit Security State Change
+  criticality: informational
+  description: Logged at boot, before the event log service is fully initialized - a reliable marker for reboots, useful for spotting attacker-forced reboots (e.g. to load a malicious driver) or gaps in coverage around maintenance windows.
+  key_fields: []
+  sample_log:
+    EventID: 4608
+    TimeCreated: "2026-01-15T03:00:00+00:00"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > System > Audit Security State Change
+    command: auditpol /set /subcategory:"Security State Change" /success:enable
+    notes: Enabled by default and cannot be meaningfully disabled without also silencing the audit-policy-change event itself.
+  mitre_attack: []
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4608"]
+
+- event_id: "4616"
+  name: The system time was changed
+  category: System
+  subcategory: Audit Security State Change
+  criticality: high
+  description: Legitimate for NTP sync (small deltas, System subject), but a large manual time change from an interactive user is a classic anti-forensics move to skew log timestamps ahead of an attack.
+  key_fields: [SubjectUserName, PreviousTime, NewTime, ProcessName]
+  sample_log:
+    EventID: 4616
+    TimeCreated: "2026-01-15T21:00:00+00:00"
+    SubjectUserName: admin_bob
+    PreviousTime: "2026-01-15T21:00:00+00:00"
+    NewTime: "2026-01-10T09:00:00+00:00"
+    ProcessName: C:\Windows\System32\svchost.exe
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > System > Audit Security State Change
+    command: auditpol /set /subcategory:"Security State Change" /success:enable
+    notes: Filter out ProcessName svchost.exe (W32Time service, normal NTP drift correction) to cut most benign noise.
+  mitre_attack: [T1070.006]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4616"]
+
+- event_id: "1102"
+  name: The audit log was cleared
+  category: System
+  subcategory: Eventlog Provider (not an Advanced Audit Policy subcategory)
+  criticality: critical
+  description: >
+    Someone ran "Clear Log" or wevtutil cl - almost never legitimate outside
+    a documented log-rotation/retention process, and one of the single
+    strongest anti-forensics/cover-tracks indicators available. This event
+    itself survives the clear (it's the last thing written).
+  key_fields: [SubjectUserName, SubjectUserSid]
+  sample_log:
+    EventID: 1102
+    TimeCreated: "2026-01-15T22:00:00+00:00"
+    SubjectUserName: svc_backup
+    SubjectUserSid: S-1-5-21-3623811015-3361044348-30300820-1500
+  audit_policy:
+    gpo_path: N/A - generated automatically by the Eventlog service itself whenever a log is cleared
+    command: 'n/a: cannot be disabled; ensure the log is forwarded off-host (WEC/Winlogbeat/SIEM) faster than an attacker can clear-then-pivot'
+    notes: Because clearing destroys everything before it, off-host forwarding latency is what actually determines whether you retain the evidence that preceded the clear.
+  mitre_attack: [T1070.001]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=1102"]
+
+- event_id: "4697"
+  name: A service was installed in the system
+  category: System
+  subcategory: Audit Security System Extension
+  criticality: high
+  description: >
+    Logged when a new service is registered - the classic PsExec / remote
+    service-creation lateral movement and persistence artifact (PsExec
+    creates a service named PSEXESVC on the target).
+  key_fields: [SubjectUserName, ServiceName, ServiceFileName, ServiceType, ServiceStartType]
+  sample_log:
+    EventID: 4697
+    TimeCreated: "2026-01-15T10:05:30+00:00"
+    SubjectUserName: svc_backup
+    ServiceName: PSEXESVC
+    ServiceFileName: C:\Windows\PSEXESVC.exe
+    ServiceType: "0x110"
+    ServiceStartType: "3"
+  audit_policy:
+    gpo_path: Computer Configuration > Security Settings > Advanced Audit Policy Configuration > System > Audit Security System Extension
+    command: auditpol /set /subcategory:"Security System Extension" /success:enable /failure:enable
+    notes: Complements the System-log event 7045 (Service Control Manager) which fires for the same action from a different log/provider - correlate both if you ingest the System log too.
+  mitre_attack: [T1543.003, T1021.002]
+  related_rules: []
+  references: ["https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=4697"]

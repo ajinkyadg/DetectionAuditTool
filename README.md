@@ -11,7 +11,15 @@ from SOC/SIEM onboarding and incident response work:
    keyword), find every rule that depends on it, what fields it needs, and
    how to enable the audit setting that populates them. Available as a CLI
    command and as a static, searchable HTML page.
-3. **An attack-to-detection simulator and log auditor** - a canned
+3. **A Windows Security event reference catalogue** (`reference/windows_security_events.yml`) -
+   43 events across all 9 Advanced Audit Policy categories (Account Logon,
+   Logon/Logoff, Account Management, Detailed Tracking, DS Access, Object
+   Access, Policy Change, Privilege Use, System), each with a sample log,
+   MITRE mapping, and exact audit-policy steps to enable it - independent of
+   whether a detection rule exists for it yet. Sourced against
+   [ultimatewindowssecurity.com](https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/)
+   and MITRE ATT&CK.
+4. **An attack-to-detection simulator and log auditor** - a canned
    brute-force scenario shows the full cycle from raw events to a fired
    detection, and the `audit` command validates a real log sample against
    every rule's required fields before you trust the rule in production.
@@ -67,8 +75,25 @@ dat search T1110
 dat search "brute force"
 ```
 
+Browse the Windows Security event reference catalogue directly, even for
+events that don't have a rule yet:
+
+```bash
+dat events list
+dat events list --category "Logon/Logoff"
+dat events show 4720
+```
+
 Export a searchable, static, offline HTML catalogue (no server needed - open
-directly in a browser):
+directly in a browser; Mermaid loads from a CDN for the diagrams). Three
+views:
+
+- **Catalogue** - the searchable rule cards, same as `dat lookup`/`dat search`
+- **Windows Events** - a filterable table of all 43 reference events; click a
+  row to see its fields, sample log, audit-enablement steps, and (when a rule
+  exists) a generated attack-to-detection flowchart
+- **Mind Map** - all reference events grouped by audit category, as a Mermaid
+  mind map
 
 ```bash
 dat export-html --out catalogue.html
@@ -109,9 +134,18 @@ dat audit --logs sample_logs/windows_security_sample.json
 
 ```
 rules/
-  windows/    brute force, RDP spraying, privileged group changes, pass-the-hash
-  linux/      SSH brute force, suspicious sudo usage
-  cloud_aws/  console login brute force, root account usage
+  windows/       brute force, RDP spraying, privileged group changes, pass-the-hash
+  linux/         SSH brute force, suspicious sudo usage
+  cloud_aws/     console login brute force, root account usage
+  sysmon/        LOLBin downloads, persistence, unsigned binaries from temp
+  waf/           SQLi/XSS/path traversal blocks, scanning, successful exploitation
+  web_server/    admin path access, directory brute forcing, web shells
+  web_proxy/     beaconing, malware category allowed, data exfil to file-sharing
+  firewall/      port scanning, admin port exposure, C2 beaconing
+  email_gateway/ phishing campaigns, executive impersonation, DMARC failures
+
+reference/
+  windows_security_events.yml   the 43-event Windows Security encyclopedia
 ```
 
 Each rule is a YAML file with:
