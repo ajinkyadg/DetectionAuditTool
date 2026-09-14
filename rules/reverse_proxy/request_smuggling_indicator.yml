@@ -1,0 +1,42 @@
+id: RP-7002
+title: HTTP Request Smuggling Indicator (Conflicting Content-Length and Transfer-Encoding)
+description: >
+  Detects a request that carries both a Content-Length header and a
+  chunked Transfer-Encoding header. RFC 7230 says Transfer-Encoding wins and
+  Content-Length must be ignored/rejected, but not every component in a
+  proxy chain agrees on that - the classic CL.TE / TE.CL desync that lets an
+  attacker smuggle a second, hidden request past the front-end proxy into
+  the backend, poisoning the connection for the next legitimate user.
+level: critical
+mitre_attack:
+  - T1071.001
+logsource:
+  category: reverse_proxy
+event_ids:
+  - "rp_access_log"
+detection_type: selection
+selection:
+  transfer_encoding: chunked
+  content_length|gt: 0
+required_fields:
+  - client_ip
+  - Host
+  - uri
+  - transfer_encoding
+  - content_length
+false_positives:
+  - Some HTTP libraries/load testers incorrectly send both headers without malicious intent - rare in normal browser traffic, but check the User-Agent before escalating
+references:
+  - https://portswigger.net/web-security/request-smuggling
+  - https://datatracker.ietf.org/doc/html/rfc7230#section-3.3.3
+audit_policy:
+  gpo_path: Reverse proxy / load balancer access log configuration - log raw Transfer-Encoding and Content-Length header values per request
+  command: >
+    nginx: add $http_transfer_encoding and $http_content_length to log_format;
+    HAProxy: capture request header Transfer-Encoding and Content-Length.
+  notes: >
+    Detection is a mitigation of last resort - the real fix is normalizing
+    or rejecting ambiguous requests at the front-end proxy (nginx
+    proxy_pass with a hardened config, or a WAF rule set that rejects
+    dual Content-Length/Transfer-Encoding requests outright) rather than
+    just alerting after the fact.

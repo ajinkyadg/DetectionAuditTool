@@ -1,0 +1,43 @@
+id: RP-7004
+title: Backend Origin Error Spike Behind Reverse Proxy
+description: >
+  Detects a burst of 5xx responses from a single backend/upstream member
+  within a short window. The reverse proxy sits directly in front of your
+  origin, so a spike here means requests are actually reaching and breaking
+  the backend - distinct from a WAF block (rejected before reaching the
+  app) and worth treating as a possible application-layer DoS, resource
+  exhaustion attack, or an attacker's fuzzer finding a crash path.
+level: high
+mitre_attack:
+  - T1499.004
+logsource:
+  category: reverse_proxy
+event_ids:
+  - "rp_access_log"
+detection_type: threshold
+selection:
+  upstream_status|gte: 500
+groupby: upstream_addr
+timeframe_minutes: 5
+threshold: 15
+condition: gte
+required_fields:
+  - upstream_addr
+  - upstream_status
+  - uri
+  - client_ip
+false_positives:
+  - A genuine backend outage/deployment issue unrelated to attack traffic - check deployment logs/change history for the same window before treating this as adversarial
+  - A single misbehaving legitimate client retrying aggressively against a real bug - correlate with client_ip diversity to distinguish "one confused client" from "distributed abuse"
+references:
+  - https://attack.mitre.org/techniques/T1499/004/
+audit_policy:
+  gpo_path: Reverse proxy / load balancer access log configuration - log upstream_status and upstream_addr per request, separately from the status code returned to the client
+  command: >
+    nginx: log_format including $upstream_status and $upstream_addr;
+    HAProxy: %ST (or %[fc_err]) and %si for the selected server.
+  notes: >
+    Client-facing status and upstream (backend) status can differ - e.g.
+    the proxy itself can return a cached 200 while the backend that filled
+    the cache actually failed. Group by upstream_addr, not client_ip, to
+    pinpoint which pool member is actually failing.

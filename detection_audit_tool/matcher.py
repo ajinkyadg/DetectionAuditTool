@@ -11,6 +11,7 @@ from .models import Detection, Event, Rule, parse_time
 
 _STRING_MODIFIERS = {"contains", "endswith", "startswith"}
 _NUMERIC_MODIFIERS = {"gte", "gt", "lte", "lt"}
+_FIELD_REF_MODIFIERS = {"eq_field", "neq_field"}
 
 
 def field_matches(event: Event, field: str, expected: Any) -> bool:
@@ -19,6 +20,12 @@ def field_matches(event: Event, field: str, expected: Any) -> bool:
     # volume-style conditions like exfil-by-byte-count that no exact-match
     # or string modifier can express). No modifier suffix means exact match
     # (or "value in expected" when expected is a list, unchanged).
+    #
+    # "eq_field"/"neq_field" compare against another field on the same event
+    # rather than a literal - e.g. Host|neq_field: SNI catches domain
+    # fronting/host-header injection, where the two fields disagreeing (not
+    # either one's literal value) is the actual signal. Sigma itself has no
+    # native field-to-field comparison; this is a deliberate extension.
     actual_field = field
     modifier: Optional[str] = None
     if "|" in field:
@@ -27,6 +34,14 @@ def field_matches(event: Event, field: str, expected: Any) -> bool:
     if actual_field not in event:
         return False
     value = event[actual_field]
+
+    if modifier in _FIELD_REF_MODIFIERS:
+        if not isinstance(expected, str) or expected not in event:
+            return False
+        other_value = event[expected]
+        if modifier == "eq_field":
+            return value == other_value
+        return value != other_value
 
     if modifier in _STRING_MODIFIERS:
         if not isinstance(value, str):

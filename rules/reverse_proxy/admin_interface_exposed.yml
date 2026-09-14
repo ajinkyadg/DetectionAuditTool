@@ -1,0 +1,42 @@
+id: RP-7003
+title: Reverse Proxy Admin/Stats Interface Reachable
+description: >
+  Detects a successful request to a reverse proxy or load balancer's own
+  management/status endpoint (nginx stub_status, HAProxy stats page, Envoy
+  admin interface). These expose backend pool membership, connection
+  counts, and sometimes config - reconnaissance value for an attacker, and
+  a sign the interface was left reachable from outside where only internal
+  monitoring should ever reach it.
+level: high
+mitre_attack:
+  - T1595.002
+  - T1190
+logsource:
+  category: reverse_proxy
+event_ids:
+  - "rp_access_log"
+detection_type: selection
+selection:
+  uri|contains:
+    - "/nginx_status"
+    - "/haproxy?stats"
+    - "/envoy/stats"
+    - "/server-status"
+  status|gte: 200
+  status|lt: 300
+required_fields:
+  - client_ip
+  - uri
+  - status
+false_positives:
+  - Your own monitoring/scraping system (Prometheus node exporter, Datadog agent) polling the stats endpoint on a schedule - allowlist its source IP rather than disabling the rule
+references:
+  - https://attack.mitre.org/techniques/T1595/002/
+audit_policy:
+  gpo_path: Reverse proxy configuration - restrict these endpoints to localhost/an internal monitoring CIDR (allow deny in nginx, or a separate internal-only listener), then log any request that still reaches them
+  command: >
+    nginx: location /nginx_status { allow 10.0.0.0/8; deny all; } -
+    ensure the deny still gets logged rather than silently dropped.
+  notes: >
+    This is a "should never happen" rule - any hit from outside the
+    monitoring CIDR is itself the finding, not just a precursor to one.

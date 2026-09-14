@@ -34,6 +34,19 @@ def test_field_matches_string_modifiers_still_work_alongside_numeric_ones():
     assert field_matches(event, "Image|contains", "System32") is True
 
 
+def test_field_matches_cross_field_comparison_modifiers():
+    matching = {"Host": "shop.corp.com", "SNI": "shop.corp.com"}
+    mismatched = {"Host": "internal-admin.corp.local", "SNI": "www.public-site.com"}
+    assert field_matches(matching, "Host|eq_field", "SNI") is True
+    assert field_matches(matching, "Host|neq_field", "SNI") is False
+    assert field_matches(mismatched, "Host|eq_field", "SNI") is False
+    assert field_matches(mismatched, "Host|neq_field", "SNI") is True
+
+
+def test_field_matches_cross_field_modifier_missing_reference_field_never_matches():
+    assert field_matches({"Host": "a"}, "Host|neq_field", "SNI") is False
+
+
 def test_brute_force_sequence_rule_fires_on_simulated_attack():
     rules = load_rules(RULES_DIR)
     events = build_brute_force_scenario(failed_attempts=6)

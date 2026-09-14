@@ -1,0 +1,41 @@
+id: RP-7005
+title: Cache Poisoning via Spoofed X-Forwarded-Host on a Cached Response
+description: >
+  Detects a cache HIT/cacheable response where the X-Forwarded-Host header
+  the client sent does not match the real Host header. If the backend
+  trusts X-Forwarded-Host to build absolute URLs (password reset links,
+  redirects, asset URLs) but the cache key doesn't include that header, an
+  attacker can poison the shared cache with a response containing their own
+  attacker-controlled links - served to every subsequent visitor who hits
+  the same cache key.
+level: critical
+mitre_attack:
+  - T1190
+logsource:
+  category: reverse_proxy
+event_ids:
+  - "rp_access_log"
+detection_type: selection
+selection:
+  cache_status: HIT
+  X-Forwarded-Host|neq_field: Host
+required_fields:
+  - client_ip
+  - Host
+  - X-Forwarded-Host
+  - cache_status
+  - uri
+false_positives:
+  - A legitimate internal service-to-service call that intentionally sets X-Forwarded-Host while proxying on behalf of another vhost - confirm the cache key strategy actually accounts for this before assuming poisoning
+references:
+  - https://portswigger.net/web-security/web-cache-poisoning
+  - https://attack.mitre.org/techniques/T1190/
+audit_policy:
+  gpo_path: Reverse proxy / CDN access log configuration - log the request's X-Forwarded-Host header value and the cache HIT/MISS/BYPASS status per request
+  command: >
+    nginx: log_format including $http_x_forwarded_host and $upstream_cache_status;
+    a CDN's edge logging config for the equivalent forwarded-host and cache-status fields.
+  notes: >
+    The real fix is including X-Forwarded-Host (or dropping/normalizing it
+    entirely) in the cache key, not just detecting after a poisoned
+    response is already cached and being served.

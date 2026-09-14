@@ -1,0 +1,41 @@
+id: RP-7001
+title: TLS SNI and HTTP Host Header Mismatch (Domain Fronting / Host Injection)
+description: >
+  Detects a request where the hostname presented at the TLS handshake (SNI)
+  does not match the HTTP Host header the client actually requests once the
+  connection is established. Legitimately this can only happen for a small,
+  known set of multi-tenant setups - anywhere else it's either domain
+  fronting (routing traffic through a trusted CDN/reverse proxy's IP and
+  certificate to hide the true destination from network-level inspection) or
+  a host-header injection probe reaching for an internal-only virtual host
+  that was never meant to be publicly routable.
+level: high
+mitre_attack:
+  - T1090.004
+  - T1190
+logsource:
+  category: reverse_proxy
+event_ids:
+  - "rp_access_log"
+detection_type: selection
+selection:
+  Host|neq_field: SNI
+required_fields:
+  - client_ip
+  - Host
+  - SNI
+  - uri
+false_positives:
+  - A deliberately configured multi-tenant reverse proxy or CDN edge where one certificate legitimately fronts several backend hostnames - allowlist those specific Host/SNI pairs before enabling this rule broadly
+references:
+  - https://attack.mitre.org/techniques/T1090/004/
+audit_policy:
+  gpo_path: Reverse proxy / load balancer access log configuration (nginx $ssl_server_name, HAProxy %[ssl_fc_sni], Envoy access log SNI field)
+  command: >
+    nginx: log_format with $ssl_server_name and $host both present;
+    HAProxy: add %[ssl_fc_sni] to the log-format alongside %[capture.req.hdr(0)] for Host.
+  notes: >
+    Most default access log formats only capture the Host header, not the
+    negotiated SNI - this rule is silent until SNI is explicitly added to
+    the log format, since it's a separate TLS-layer value from the HTTP
+    Host header the application sees.

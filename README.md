@@ -140,7 +140,10 @@ rules/
   sysmon/        LOLBin downloads, persistence, unsigned binaries from temp
   waf/           SQLi/XSS/path traversal blocks, scanning, successful exploitation
   web_server/    admin path access, directory brute forcing, web shells
-  web_proxy/     beaconing, malware category allowed, data exfil to file-sharing
+  web_proxy/     Forward/egress proxy (your users -> the internet): beaconing,
+                 malware category allowed, data exfil to file-sharing
+  reverse_proxy/ Reverse proxy (the internet -> your apps): host/SNI mismatch,
+                 request smuggling, cache poisoning, backend error spikes
   firewall/      port scanning, admin port exposure, C2 beaconing
   email_gateway/ phishing campaigns, executive impersonation, DMARC failures
 
