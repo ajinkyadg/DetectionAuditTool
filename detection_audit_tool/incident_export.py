@@ -41,6 +41,7 @@ _TEMPLATE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Phishing Incident Walkthrough</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <style>
   :root {
     color-scheme: light dark;
@@ -63,9 +64,17 @@ _TEMPLATE = """<!doctype html>
   .campaign-card .row div { color: var(--muted); }
   .campaign-card strong { color: var(--text); }
   main { padding: 0 24px 40px; max-width: 1200px; }
+  .diagram-panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+                    padding: 16px; margin-bottom: 20px; overflow-x: auto; }
+  .diagram-panel h2 { margin: 0 0 4px; font-size: 14px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0 14px; font-size: 11px; color: var(--muted); }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .swatch { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+  #diagram-container { min-height: 120px; }
   .killchain { display: flex; gap: 4px; align-items: stretch; overflow-x: auto; padding-bottom: 8px; }
-  .stage-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-                padding: 14px; width: 260px; min-width: 260px; display: flex; flex-direction: column; gap: 8px; }
+  .stage-card { background: var(--card); border: 1px solid var(--border); border-top: 4px solid var(--accent);
+                border-radius: 10px; padding: 14px; width: 260px; min-width: 260px;
+                display: flex; flex-direction: column; gap: 8px; }
   .stage-card.capped { opacity: 0.55; }
   .arrow { display: flex; align-items: center; color: var(--muted); font-size: 20px; padding: 0 2px; }
   .stage-idx { display: inline-block; width: 20px; height: 20px; line-height: 20px; text-align: center;
@@ -79,12 +88,12 @@ _TEMPLATE = """<!doctype html>
   .blind-spot { font-size: 11px; background: color-mix(in srgb, var(--atrisk) 15%, var(--card));
                 border: 1px solid var(--atrisk); border-radius: 6px; padding: 6px 8px; color: var(--text); }
   .section-title { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-top: 4px; }
-  .rule-chip-btn { background: none; border: 1px solid var(--accent); color: var(--accent); border-radius: 999px;
+  .rule-chip-btn { background: none; border: 1px solid #7c3aed; color: #7c3aed; border-radius: 999px;
                    font-size: 10px; padding: 2px 8px; cursor: pointer; margin: 0 4px 4px 0; }
   .rule-detail { font-size: 11px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
                  padding: 8px; margin-top: 4px; line-height: 1.5; }
   .action-row { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; margin-top: 3px; }
-  .action-row input { margin-top: 2px; }
+  .action-row input { margin-top: 2px; accent-color: #0d9488; }
   .plan-and-kpi { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
   .panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
   .panel h2 { margin: 0 0 8px; font-size: 14px; }
@@ -118,6 +127,12 @@ _TEMPLATE = """<!doctype html>
 </header>
 <div class="campaign-card" id="campaign-card"></div>
 <main>
+  <div class="diagram-panel">
+    <h2>Kill Chain Diagram</h2>
+    <div class="sub" style="margin-bottom:0;">How each stage, detection rule, and response action relate - dotted arrows show what a rule detects and what an action would have stopped.</div>
+    <div class="legend" id="legend"></div>
+    <div id="diagram-container"><div class="narrative">Rendering diagram...</div></div>
+  </div>
   <div class="killchain" id="killchain"></div>
   <div class="caveat">
     Checking a response action assumes that control existed <em>before</em> this campaign started -
@@ -152,6 +167,14 @@ _TEMPLATE = """<!doctype html>
 const CAMPAIGN = __CAMPAIGN_JSON__;
 const STAGES = __STAGES_JSON__;
 const USERS = __USERS_JSON__;
+
+const STAGE_COLORS = ['#2563eb', '#d97706', '#ea580c', '#dc2626', '#7c1d1d'];
+const RULE_COLOR = '#7c3aed';
+const ACTION_COLOR = '#0d9488';
+const BLINDSPOT_COLOR = '#6b7280';
+
+var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+mermaid.initialize({ startOnLoad: false, theme: prefersDark ? 'dark' : 'default' });
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, function(c) {
@@ -229,9 +252,10 @@ function stageCardHtml(stage, reachCount, cap) {
     var checked = selectedActionIds.has(a.id) ? ' checked' : '';
     return '<label class="action-row"><input type="checkbox" data-action="' + escapeHtml(a.id) + '"' + checked + '> ' + escapeHtml(a.label) + '</label>';
   }).join('');
+  var borderColor = STAGE_COLORS[stage.index] || '#2563eb';
   return '' +
-    '<div class="stage-card' + (capped ? ' capped' : '') + '">' +
-      '<h3><span class="stage-idx">' + stage.index + '</span>' + escapeHtml(stage.name) + '</h3>' +
+    '<div class="stage-card' + (capped ? ' capped' : '') + '" style="border-top-color:' + borderColor + '">' +
+      '<h3><span class="stage-idx" style="background:' + borderColor + '">' + stage.index + '</span>' + escapeHtml(stage.name) + '</h3>' +
       '<div>' + stage.mitre.map(function(m) { return '<span class="chip">' + escapeHtml(m) + '</span>'; }).join('') + '</div>' +
       '<div class="reach-count">' + reachCount + ' / ' + USERS.length + '</div>' +
       '<div class="reach-label">users reached this stage</div>' +
@@ -377,12 +401,94 @@ function renderKpiAndTriage() {
   });
 }
 
+/* ---------- Kill chain diagram (Mermaid) ---------- */
+function renderLegend() {
+  var items = STAGES.map(function(s, i) {
+    return '<span class="legend-item"><span class="swatch" style="background:' + STAGE_COLORS[i] + '"></span>' + escapeHtml(s.name) + '</span>';
+  });
+  items.push('<span class="legend-item"><span class="swatch" style="background:' + RULE_COLOR + '"></span>Detection rule</span>');
+  items.push('<span class="legend-item"><span class="swatch" style="background:' + ACTION_COLOR + '"></span>Response action</span>');
+  items.push('<span class="legend-item"><span class="swatch" style="background:' + BLINDSPOT_COLOR + '"></span>No internal detection (blind spot)</span>');
+  document.getElementById('legend').innerHTML = items.join('');
+}
+
+function sanitizeLabel(s, maxLen) {
+  var cleaned = String(s).replace(/["()\[\]{}]/g, '');
+  if (maxLen && cleaned.length > maxLen) cleaned = cleaned.slice(0, maxLen - 1) + '…';
+  return cleaned;
+}
+
+function buildDiagramDef(cap) {
+  var lines = ['flowchart TD', 'CAMP["' + sanitizeLabel(CAMPAIGN.name, 40) + '"]'];
+  var prevNode = 'CAMP';
+
+  STAGES.forEach(function(stage, i) {
+    var sNode = 'S' + stage.index;
+    var capped = cap !== Infinity && stage.index > cap;
+    lines.push(sNode + '["' + stage.index + '. ' + sanitizeLabel(stage.name, 30) + '"]');
+    lines.push(prevNode + ' --> ' + sNode);
+    lines.push('class ' + sNode + ' stage' + stage.index + (capped ? 'Capped' : ''));
+    prevNode = sNode;
+
+    if (stage.rules.length) {
+      stage.rules.forEach(function(r, ri) {
+        var rNode = 'R' + stage.index + '_' + ri;
+        lines.push(rNode + '["' + sanitizeLabel(r.id, 24) + '"]');
+        lines.push(sNode + ' -.->|detects| ' + rNode);
+        lines.push('class ' + rNode + ' ruleNode');
+      });
+    } else {
+      var nrNode = 'NR' + stage.index;
+      lines.push(nrNode + '["no internal rule"]');
+      lines.push(sNode + ' -.-> ' + nrNode);
+      lines.push('class ' + nrNode + ' blindSpotNode');
+    }
+
+    stage.actions.forEach(function(a, ai) {
+      var aNode = 'A' + stage.index + '_' + ai;
+      var selected = selectedActionIds.has(a.id);
+      lines.push(aNode + '["' + sanitizeLabel(a.label, 34) + '"]');
+      lines.push(sNode + ' --> ' + aNode);
+      lines.push('class ' + aNode + (selected ? ' actionSelected' : ' actionNode'));
+      if (i < STAGES.length - 1) {
+        lines.push(aNode + ' -.->|would stop| S' + STAGES[i + 1].index);
+      }
+    });
+  });
+
+  lines.push('classDef campNode fill:#475569,color:#fff,stroke:#334155');
+  lines.push('classDef ruleNode fill:' + RULE_COLOR + ',color:#fff,stroke:#5b21b6');
+  lines.push('classDef actionNode fill:' + ACTION_COLOR + ',color:#fff,stroke:#0f766e');
+  lines.push('classDef actionSelected fill:' + ACTION_COLOR + ',color:#fff,stroke:#fff,stroke-width:3px');
+  lines.push('classDef blindSpotNode fill:' + BLINDSPOT_COLOR + ',color:#fff,stroke:#4b5563,stroke-dasharray: 3 3');
+  STAGE_COLORS.forEach(function(color, idx) {
+    lines.push('classDef stage' + idx + ' fill:' + color + ',color:#fff,stroke:#00000033');
+    lines.push('classDef stage' + idx + 'Capped fill:' + color + ',color:#fff,stroke:#00000033,opacity:0.3');
+  });
+  lines.push('class CAMP campNode');
+
+  return lines.join('\\n');
+}
+
+var diagramRenderCounter = 0;
+function renderDiagram() {
+  var cap = containmentCap();
+  var container = document.getElementById('diagram-container');
+  mermaid.render('mmd-incident-' + (diagramRenderCounter++), buildDiagramDef(cap)).then(function(res) {
+    container.innerHTML = res.svg;
+  }).catch(function(err) {
+    container.innerHTML = '<div class="narrative">Could not render diagram: ' + escapeHtml(String(err)) + '</div>';
+  });
+}
+
 function renderAll() {
   renderKillchain();
   renderPlan();
   renderKpiAndTriage();
+  renderDiagram();
 }
 
+renderLegend();
 renderAll();
 </script>
 </body>
