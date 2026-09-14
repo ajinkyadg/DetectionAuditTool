@@ -7,6 +7,7 @@
     dat lookup 4625
     dat search "brute force"
     dat simulate brute-force
+    dat simulate phishing [--out phishing_incident.html]
     dat run --logs sample_logs/windows_security_sample.json
     dat audit --logs sample_logs/windows_security_sample.json
     dat export-html [--out catalogue.html]
@@ -23,9 +24,11 @@ from typing import List
 from .audit import audit_rules
 from .event_catalogue import DEFAULT_CATALOGUE_PATH, find_event, load_windows_events
 from .html_export import export_html
+from .incident_export import export_phishing_incident_html
 from .lookup import lookup_event, search
 from .matcher import run_rules
 from .models import Event, Rule
+from .phishing_incident import STAGES, USERS, stage_reach_counts
 from .rule_loader import RuleLoadError, load_rules
 from .simulator import build_brute_force_scenario, narrate_scenario
 
@@ -175,6 +178,23 @@ def cmd_simulate_brute_force(args: argparse.Namespace) -> None:
         print(f"  {d.summary}")
 
 
+def cmd_simulate_phishing(args: argparse.Namespace) -> None:
+    counts = stage_reach_counts()
+    print(f"=== {len(USERS)} recipients, kill-chain reach ===\n")
+    for stage in STAGES:
+        print(f"[{stage.index}] {stage.name}: {counts[stage.id]}/{len(USERS)} users reached this stage")
+        if stage.blind_spot_note:
+            print(f"      blind spot: {stage.blind_spot_note}")
+    print("\n=== User triage ===\n")
+    for user in USERS:
+        print(f"{user.name:<14} ({user.mailbox}): {user.status.upper()}")
+        print(f"    {user.note}")
+    if args.out:
+        rules = _load(args.rules_dir)
+        export_phishing_incident_html(rules, args.out)
+        print(f"\nwrote interactive walkthrough to {args.out}")
+
+
 def cmd_run(args: argparse.Namespace) -> None:
     rules = _load(args.rules_dir)
     events = _load_events(args.logs)
@@ -253,6 +273,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_sim_bf = sim_sub.add_parser("brute-force", help="password spray -> successful logon")
     p_sim_bf.add_argument("--failed-attempts", type=int, default=6)
     p_sim_bf.set_defaults(func=cmd_simulate_brute_force)
+
+    p_sim_phish = sim_sub.add_parser(
+        "phishing", help="phishing -> credential harvest -> account takeover, with interactive HTML walkthrough"
+    )
+    p_sim_phish.add_argument("--out", help="write the interactive HTML kill-chain walkthrough to this path")
+    p_sim_phish.set_defaults(func=cmd_simulate_phishing)
 
     p_run = sub.add_parser("run", help="run all rules against a log file")
     p_run.add_argument("--logs", required=True, help="path to a JSON array of log events")

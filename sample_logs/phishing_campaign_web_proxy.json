@@ -1,0 +1,93 @@
+[
+  {
+    "timestamp": "2026-04-02T08:52:10+00:00",
+    "src_ip": "10.0.2.14",
+    "user": "bwong",
+    "method": "GET",
+    "domain": "corp-secure-verify.com",
+    "url": "https://corp-secure-verify.com/reset",
+    "category": "newly-registered-domain",
+    "action": "allowed",
+    "status_code": 200,
+    "bytes_out": 480,
+    "bytes_in": 9200
+  },
+  {
+    "timestamp": "2026-04-02T08:58:44+00:00",
+    "src_ip": "10.0.2.31",
+    "user": "ljackson",
+    "method": "GET",
+    "domain": "corp-secure-verify.com",
+    "url": "https://corp-secure-verify.com/reset",
+    "category": "newly-registered-domain",
+    "action": "allowed",
+    "status_code": 200,
+    "bytes_out": 480,
+    "bytes_in": 9200
+  },
+  {
+    "timestamp": "2026-04-02T08:58:57+00:00",
+    "src_ip": "10.0.2.31",
+    "user": "ljackson",
+    "method": "POST",
+    "domain": "corp-secure-verify.com",
+    "url": "https://corp-secure-verify.com/reset",
+    "category": "newly-registered-domain",
+    "action": "allowed",
+    "status_code": 200,
+    "bytes_out": 640,
+    "bytes_in": 3100
+  },
+  {
+    "timestamp": "2026-04-02T09:01:05+00:00",
+    "src_ip": "10.0.2.47",
+    "user": "rpatel",
+    "method": "GET",
+    "domain": "corp-secure-verify.com",
+    "url": "https://corp-secure-verify.com/reset",
+    "category": "newly-registered-domain",
+    "action": "allowed",
+    "status_code": 200,
+    "bytes_out": 480,
+    "bytes_in": 9200
+  },
+  {
+    "timestamp": "2026-04-02T09:01:19+00:00",
+    "src_ip": "10.0.2.47",
+    "user": "rpatel",
+    "method": "POST",
+    "domain": "corp-secure-verify.com",
+    "url": "https://corp-secure-verify.com/reset",
+    "category": "newly-registered-domain",
+    "action": "allowed",
+    "status_code": 200,
+    "bytes_out": 655,
+    "bytes_in": 3100
+  },
+  {
+    "timestamp": "2026-04-02T09:00:12+00:00",
+    "src_ip": "10.0.2.52",
+    "user": "mchen",
+    "method": "GET",
+    "domain": "corp-secure-verify.com",
+    "url": "https://corp-secure-verify.com/reset",
+    "category": "newly-registered-domain",
+    "action": "allowed",
+    "status_code": 200,
+    "bytes_out": 480,
+    "bytes_in": 9200
+  },
+  {
+    "timestamp": "2026-04-02T09:00:28+00:00",
+    "src_ip": "10.0.2.52",
+    "user": "mchen",
+    "method": "POST",
+    "domain": "corp-secure-verify.com",
+    "url": "https://corp-secure-verify.com/reset",
+    "category": "newly-registered-domain",
+    "action": "allowed",
+    "status_code": 200,
+    "bytes_out": 648,
+    "bytes_in": 3100
+  }
+]

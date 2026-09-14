@@ -1,0 +1,43 @@
+id: EMAIL-8006
+title: User-Reported Phishing Email
+description: >
+  Detects a message a mailbox owner flagged as phishing via the client-side
+  "Report Message"/"Report Phishing" button. Every automated control in this
+  catalogue reacts after the fact - this is the one detection source that
+  can fire before an attacker's link is ever clicked, since it comes from
+  the recipient reading the email rather than a log line. Its coverage
+  depends entirely on security-awareness training and how many recipients
+  actually use the button.
+level: medium
+mitre_attack:
+  - T1566.002
+logsource:
+  category: email_gateway
+event_ids:
+  - "user_report"
+detection_type: selection
+selection:
+  report_source: user
+  verdict: phishing
+required_fields:
+  - reporter
+  - message_id
+  - sender
+  - subject
+  - report_source
+false_positives:
+  - Users over-reporting legitimate marketing/newsletter email as "phishing" out of habit - track a false-report rate per user/team to calibrate how much weight to give a single report
+references:
+  - https://attack.mitre.org/techniques/T1566/002/
+audit_policy:
+  gpo_path: >
+    Mail client add-in configuration (Microsoft "Report Message"/"Report
+    Phishing" add-in, Google Workspace "Report phishing", or a third-party
+    button like Cofense/KnowBe4 PhishER) - deploy org-wide via the mail
+    admin console, not opt-in per user.
+  command: "# Microsoft 365: Deploy the built-in add-in via the Integrated Apps admin center, then route reports to Defender for Office 365 / a shared mailbox your SIEM ingests"
+  notes: >
+    A single report on a live campaign should be enough to trigger a
+    retroactive search-and-purge across every other mailbox that received
+    the same sender/subject/link - don't wait for a second report before
+    acting.

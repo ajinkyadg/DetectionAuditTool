@@ -1,0 +1,47 @@
+id: ID-9001
+title: Impossible Travel Sign-In Risk Detected
+description: >
+  Detects a successful sign-in the identity provider itself has already
+  flagged as "impossible travel" (Azure AD Identity Protection's atypical
+  travel risk detection, or Okta ThreatInsight's equivalent) - two
+  successful authentications for the same account from locations too far
+  apart to reach in the elapsed time. This is the classic tell that stolen
+  credentials (e.g. from a phishing kit) are being used from attacker
+  infrastructure shortly after the victim entered them.
+level: critical
+mitre_attack:
+  - T1078
+  - T1078.004
+logsource:
+  category: identity
+event_ids:
+  - "signin_log"
+detection_type: selection
+selection:
+  event_type: signin
+  result: success
+  risk_detection: impossibleTravel
+required_fields:
+  - user_principal_name
+  - ip_address
+  - location_country
+  - risk_detection
+  - result
+false_positives:
+  - A user genuinely traveling and connecting through a VPN/corporate exit node in a different region than their previous session - correlate with known corporate VPN egress IP ranges before escalating
+references:
+  - https://attack.mitre.org/techniques/T1078/
+audit_policy:
+  gpo_path: >
+    Azure AD Identity Protection (requires Azure AD Premium P2) - Risk
+    Detections > sign-in risk policy; or Okta ThreatInsight + Behavior
+    Detection rules under Security > Behavior Detection.
+  command: "# Azure AD: az ad identity-protection ... (or the Entra admin center Identity Protection blade) - ensure risk detections are exported to your SIEM via the Microsoft Graph identityRiskEvents API or Log Analytics"
+  notes: >
+    This rule engine matches single events - it does not itself compute
+    geo-velocity across two separate sign-ins. The impossible-travel
+    computation has to happen upstream in the IdP (which is licensed
+    functionality, not free) or in a dedicated correlation search with
+    geo-IP lookups; this rule only consumes that verdict once the IdP
+    produces it. Without a P2/equivalent license, this detection has a
+    real gap, not just a tuning problem.

@@ -1,0 +1,44 @@
+id: ID-9002
+title: Suspicious External Inbox Forwarding Rule Created
+description: >
+  Detects a newly created or modified mailbox rule that forwards or
+  redirects mail to an external address. A top post-compromise action after
+  a mailbox takeover - the attacker sets a quiet forwarding rule (often with
+  no visible folder action) so they keep receiving copies of mail, password
+  reset links, and MFA codes even after the victim changes their password.
+level: critical
+mitre_attack:
+  - T1114.003
+  - T1098.002
+logsource:
+  category: identity
+event_ids:
+  - "m365_audit_log"
+detection_type: selection
+selection:
+  operation:
+    - New-InboxRule
+    - Set-InboxRule
+  external_forward: true
+required_fields:
+  - mailbox
+  - operation
+  - forward_to
+  - external_forward
+  - actor
+false_positives:
+  - A legitimate employee-configured forward to a personal address for convenience, or an approved business process (e.g. shared-mailbox triage) - confirm with the mailbox owner directly rather than assuming compromise, but still treat it as high priority until confirmed
+references:
+  - https://attack.mitre.org/techniques/T1114/003/
+audit_policy:
+  gpo_path: >
+    Microsoft Purview (compliance center) Unified Audit Log must be
+    enabled, plus the built-in Defender for Office 365 alert policy
+    "Creation of forwarding/redirect rule" (or a custom alert on
+    New-InboxRule/Set-InboxRule with a non-empty ForwardTo/RedirectTo).
+  command: "Set-OrganizationConfig -AuditDisabled $false ; Search-UnifiedAuditLog -RecordType ExchangeAdmin -Operations New-InboxRule,Set-InboxRule"
+  notes: >
+    Also block external forwarding at the tenant level by default
+    (Exchange Online remote domain auto-forward setting) so this becomes a
+    "should never succeed" event rather than routine self-service - the
+    same posture as WEB rules that treat any hit as the finding itself.

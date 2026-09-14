@@ -23,6 +23,14 @@ from SOC/SIEM onboarding and incident response work:
    brute-force scenario shows the full cycle from raw events to a fired
    detection, and the `audit` command validates a real log sample against
    every rule's required fields before you trust the rule in production.
+5. **An interactive incident walkthrough** - a worked phishing-to-account-
+   takeover scenario (8 simulated recipients, one real campaign) as a
+   clickable kill chain: pick detection rules and response actions at each
+   stage and watch the user-triage table recompute live, showing exactly who
+   your plan would have saved. The "who clicked / who entered credentials"
+   split isn't asserted - it's correlated from a synthetic web proxy log
+   (GET vs. POST to the phishing URL) and covered by a test that fails if the
+   two ever disagree.
 
 ## Install
 
@@ -107,6 +115,16 @@ Run the canned attack-to-detection simulation (password spray against
 dat simulate brute-force
 ```
 
+Run the phishing incident walkthrough - prints the kill-chain reach counts
+and per-user triage to the console, and (with `--out`) exports the
+interactive HTML version where you click stages to pick detection rules and
+response actions and watch who your plan would have saved:
+
+```bash
+dat simulate phishing --out phishing_incident.html
+open phishing_incident.html
+```
+
 Run the whole rule set against a real/sample log file:
 
 ```bash
@@ -145,7 +163,9 @@ rules/
   reverse_proxy/ Reverse proxy (the internet -> your apps): host/SNI mismatch,
                  request smuggling, cache poisoning, backend error spikes
   firewall/      port scanning, admin port exposure, C2 beaconing
-  email_gateway/ phishing campaigns, executive impersonation, DMARC failures
+  email_gateway/ phishing campaigns, executive impersonation, DMARC failures,
+                 user-reported phishing
+  identity/      impossible travel sign-in, suspicious inbox forwarding rules
 
 reference/
   windows_security_events.yml   the 43-event Windows Security encyclopedia

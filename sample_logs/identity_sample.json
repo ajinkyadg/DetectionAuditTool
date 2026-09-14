@@ -1,0 +1,48 @@
+[
+  {
+    "timestamp": "2026-04-02T09:00:00+00:00",
+    "event_type": "signin",
+    "user_principal_name": "mchen@corp.com",
+    "ip_address": "198.51.100.40",
+    "location_country": "US",
+    "result": "success",
+    "risk_detection": "none"
+  },
+  {
+    "timestamp": "2026-04-02T09:14:00+00:00",
+    "event_type": "signin",
+    "user_principal_name": "mchen@corp.com",
+    "ip_address": "203.0.113.61",
+    "location_country": "NG",
+    "result": "success",
+    "risk_detection": "impossibleTravel"
+  },
+  {
+    "timestamp": "2026-04-02T09:20:00+00:00",
+    "event_type": "m365_admin",
+    "operation": "New-InboxRule",
+    "mailbox": "mchen@corp.com",
+    "actor": "mchen@corp.com",
+    "forward_to": "backup.recovery.mail@protonmail.com",
+    "external_forward": true
+  },
+  {
+    "timestamp": "2026-04-02T09:05:00+00:00",
+    "event_type": "signin",
+    "user_principal_name": "rpatel@corp.com",
+    "ip_address": "198.51.100.41",
+    "location_country": "US",
+    "result": "success",
+    "risk_detection": "none"
+  },
+  {
+    "timestamp": "2026-04-02T09:16:00+00:00",
+    "event_type": "signin",
+    "user_principal_name": "rpatel@corp.com",
+    "ip_address": "203.0.113.62",
+    "location_country": "RU",
+    "result": "failure",
+    "risk_detection": "impossibleTravel",
+    "failure_reason": "MFA challenge not satisfied"
+  }
+]
