@@ -58,7 +58,6 @@ _TEMPLATE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Phishing Incident Walkthrough</title>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <style>
   :root {
     color-scheme: light dark;
@@ -101,7 +100,23 @@ _TEMPLATE = """<!doctype html>
   .legend-item { display: flex; align-items: center; gap: 5px; }
   .swatch { width: 16px; height: 16px; border-radius: 5px; display: inline-flex; align-items: center;
             justify-content: center; font-size: 10px; line-height: 1; }
-  #diagram-container { min-height: 90px; max-height: 60vh; overflow: auto; }
+  #diagram-container { min-height: 90px; max-height: 65vh; overflow: auto; padding: 4px 2px; }
+  .mm-tree { display: flex; flex-direction: column; }
+  .mm-root { font-size: 13px; font-weight: 600; padding: 4px 0 8px; }
+  .mm-connector { width: 2px; height: 14px; background: var(--border); margin-left: 18px; }
+  .mm-node { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+             border-radius: 8px; }
+  .mm-node.capped { opacity: 0.5; }
+  .mm-node > summary { list-style: none; cursor: pointer; padding: 8px 10px; display: flex; }
+  .mm-node > summary::-webkit-details-marker { display: none; }
+  .mm-node-head { display: flex; align-items: center; gap: 8px; width: 100%; }
+  .mm-icon { flex: none; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center;
+             justify-content: center; font-size: 13px; color: #fff; }
+  .mm-node-title { font-size: 13px; font-weight: 600; flex: 1; min-width: 0; }
+  .mm-reach { font-size: 11px; color: var(--muted); flex: none; }
+  .mm-caret { color: var(--muted); font-size: 11px; transition: transform .15s; flex: none; margin-left: 4px; }
+  .mm-node[open] .mm-caret { transform: rotate(90deg); }
+  .mm-node-body { padding: 0 12px 12px 46px; display: flex; flex-direction: column; gap: 8px; }
   .killchain { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
   .stage-card { background: var(--card); border: 1px solid var(--border); border-top: 3px solid var(--accent);
                 border-radius: 10px; padding: 0; width: 100%; }
@@ -179,7 +194,7 @@ _TEMPLATE = """<!doctype html>
   <div class="killchain-layout" id="killchain-layout">
     <div class="diagram-panel" id="diagram-panel">
       <div class="diagram-head">
-        <h2>Kill Chain</h2>
+        <h2>Kill Chain - click a stage to expand</h2>
         <button class="legend-toggle" id="legend-toggle" type="button">Legend</button>
       </div>
       <div class="legend" id="legend"></div>
@@ -237,33 +252,6 @@ const STATUS_ICONS = { safe: '✅', unknown: '❔', at_risk: '⚠', compromised:
 const PHASE_LABELS = { preparation: 'Preparation', containment: 'Containment', eradication: 'Eradication', recovery: 'Recovery' };
 const PHASE_COLORS = { preparation: '#64748b', containment: '#d97706', eradication: '#dc2626', recovery: '#16a34a' };
 const PHASE_ORDER = ['preparation', 'containment', 'eradication', 'recovery'];
-
-var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-mermaid.initialize({
-  startOnLoad: false,
-  theme: prefersDark ? 'dark' : 'default',
-  themeVariables: { fontSize: '16px' },
-  flowchart: { htmlLabels: true, nodeSpacing: 26, rankSpacing: 42 },
-});
-
-/* Mermaid ships each SVG at width="100%" with a max-width style, so it
-   shrinks (text included) to fit whatever container it lands in - great for
-   a small diagram, unreadable for a wide branching one. Force it back to
-   its natural pixel size and let the container scroll instead of squeezing. */
-function useNaturalSvgSize(svgMarkup) {
-  var wrapper = document.createElement('div');
-  wrapper.innerHTML = svgMarkup;
-  var svg = wrapper.querySelector('svg');
-  if (svg) {
-    var viewBox = (svg.getAttribute('viewBox') || '').split(/\s+/).map(Number);
-    if (viewBox.length === 4 && viewBox[2] && viewBox[3]) {
-      svg.setAttribute('width', Math.round(viewBox[2]) + 'px');
-      svg.setAttribute('height', Math.round(viewBox[3]) + 'px');
-      svg.style.maxWidth = 'none';
-    }
-  }
-  return wrapper.innerHTML;
-}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, function(c) {
@@ -329,22 +317,25 @@ function ruleDetailHtml(r) {
 }
 
 var expandedStageId = STAGES[0].id;
+var expandedMindmapIds = new Set([STAGES[0].id]);
 
-function ruleChipsHtml(rules, stageId, containerKind) {
+function ruleChipsHtml(rules, stageId, containerKind, idPrefix) {
   return rules.map(function(r) {
     return '<button class="rule-chip-btn" data-stage="' + stageId + '" data-rule="' + escapeHtml(r.id) +
-      '" data-container="' + containerKind + '-' + stageId + '">' + escapeHtml(r.id) + '</button>';
+      '" data-container="' + idPrefix + '-' + containerKind + '-' + stageId + '">' + escapeHtml(r.id) + '</button>';
   }).join('');
 }
 
-function stageCardHtml(stage, reachCount, cap) {
-  var capped = cap !== Infinity && stage.index > cap;
+/* Shared detail content for a stage - used by both the mind map node body and
+   the text accordion body, so the two views can never drift out of sync.
+   idPrefix keeps container ids unique when both views render at once (Split mode). */
+function stageDetailBodyHtml(stage, idPrefix) {
   var rulesHtml = stage.rules.length
-    ? ruleChipsHtml(stage.rules, stage.id, 'rules')
+    ? ruleChipsHtml(stage.rules, stage.id, 'rules', idPrefix)
     : '<div class="narrative">No internal detection rule covers this step.</div>';
   var parallelSection = stage.parallel_rules.length
     ? '<div class="section-title">Parallel detections (same MITRE technique, different log source)</div>' +
-      '<div id="parallel-' + stage.id + '">' + ruleChipsHtml(stage.parallel_rules, stage.id, 'parallel') + '</div>'
+      '<div id="' + idPrefix + '-parallel-' + stage.id + '">' + ruleChipsHtml(stage.parallel_rules, stage.id, 'parallel', idPrefix) + '</div>'
     : '';
   var blindSpot = stage.blind_spot_note
     ? '<div class="blind-spot">Blind spot: ' + escapeHtml(stage.blind_spot_note) + '</div>' : '';
@@ -355,6 +346,48 @@ function stageCardHtml(stage, reachCount, cap) {
       '<span class="phase-badge" style="background:' + phaseColor + '">' + escapeHtml(PHASE_LABELS[a.phase] || a.phase) + '</span> ' +
       escapeHtml(a.label) + '</label>';
   }).join('');
+  return '' +
+    '<div>' + stage.mitre.map(function(m) { return '<span class="chip">' + escapeHtml(m) + '</span>'; }).join('') + '</div>' +
+    '<div class="narrative">' + escapeHtml(stage.narrative) + '</div>' +
+    blindSpot +
+    '<div class="section-title">Identification (detection rule)</div>' +
+    '<div id="' + idPrefix + '-rules-' + stage.id + '">' + rulesHtml + '</div>' +
+    parallelSection +
+    '<div class="section-title">Response actions (SANS phase tagged)</div>' +
+    actionsHtml;
+}
+
+/* Rule-chip and response-action-checkbox wiring is identical between the mind
+   map and the accordion - only the container element differs. */
+function wireStageDetailEvents(containerEl) {
+  containerEl.querySelectorAll('.rule-chip-btn[data-rule]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var stageId = btn.dataset.stage, ruleId = btn.dataset.rule, containerId = btn.dataset.container;
+      var container = document.getElementById(containerId);
+      var existing = container.querySelector('.rule-detail[data-for="' + ruleId + '"]');
+      if (existing) { existing.remove(); return; }
+      var stage = STAGES.find(function(s) { return s.id === stageId; });
+      var rule = stage.rules.concat(stage.parallel_rules).find(function(r) { return r.id === ruleId; });
+      var div = document.createElement('div');
+      div.innerHTML = ruleDetailHtml(rule);
+      div.firstChild.setAttribute('data-for', ruleId);
+      container.appendChild(div.firstChild);
+      selectedRuleIds.add(ruleId);
+      renderPlan();
+    });
+  });
+
+  containerEl.querySelectorAll('[data-action]').forEach(function(cb) {
+    cb.addEventListener('change', function() {
+      if (cb.checked) selectedActionIds.add(cb.dataset.action);
+      else selectedActionIds.delete(cb.dataset.action);
+      renderAll();
+    });
+  });
+}
+
+function stageCardHtml(stage, reachCount, cap) {
+  var capped = cap !== Infinity && stage.index > cap;
   var borderColor = STAGE_COLORS[stage.index] || '#2563eb';
   var icon = STAGE_ICONS[stage.index] || '';
   var isOpen = stage.id === expandedStageId;
@@ -371,16 +404,7 @@ function stageCardHtml(stage, reachCount, cap) {
           '<span class="chevron">&#9656;</span>' +
         '</div>' +
       '</summary>' +
-      '<div class="stage-body">' +
-        '<div>' + stage.mitre.map(function(m) { return '<span class="chip">' + escapeHtml(m) + '</span>'; }).join('') + '</div>' +
-        '<div class="narrative">' + escapeHtml(stage.narrative) + '</div>' +
-        blindSpot +
-        '<div class="section-title">Identification (detection rule)</div>' +
-        '<div id="rules-' + stage.id + '">' + rulesHtml + '</div>' +
-        parallelSection +
-        '<div class="section-title">Response actions (SANS phase tagged)</div>' +
-        actionsHtml +
-      '</div>' +
+      '<div class="stage-body">' + stageDetailBodyHtml(stage, 'acc') + '</div>' +
     '</details>';
 }
 
@@ -407,30 +431,50 @@ function renderKillchain() {
     });
   });
 
-  killchainEl.querySelectorAll('.rule-chip-btn[data-rule]').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var stageId = btn.dataset.stage, ruleId = btn.dataset.rule, containerId = btn.dataset.container;
-      var container = document.getElementById(containerId);
-      var existing = container.querySelector('.rule-detail[data-for="' + ruleId + '"]');
-      if (existing) { existing.remove(); return; }
-      var stage = STAGES.find(function(s) { return s.id === stageId; });
-      var rule = stage.rules.concat(stage.parallel_rules).find(function(r) { return r.id === ruleId; });
-      var div = document.createElement('div');
-      div.innerHTML = ruleDetailHtml(rule);
-      div.firstChild.setAttribute('data-for', ruleId);
-      container.appendChild(div.firstChild);
-      selectedRuleIds.add(ruleId);
-      renderPlan();
+  wireStageDetailEvents(killchainEl);
+}
+
+/* ---------- Mind map: expand/collapse per node, vertical timeline ---------- */
+function mindmapNodeHtml(stage, reachCount, cap) {
+  var capped = cap !== Infinity && stage.index > cap;
+  var color = STAGE_COLORS[stage.index] || '#2563eb';
+  var icon = STAGE_ICONS[stage.index] || '';
+  var isOpen = expandedMindmapIds.has(stage.id);
+  return '' +
+    '<details class="mm-node' + (capped ? ' capped' : '') + '" data-stage-id="' + stage.id + '"' +
+        ' style="border-left-color:' + color + '"' + (isOpen ? ' open' : '') + '>' +
+      '<summary>' +
+        '<div class="mm-node-head">' +
+          '<span class="mm-icon" style="background:' + color + '">' + icon + '</span>' +
+          '<span class="mm-node-title">' + stage.index + '. ' + escapeHtml(stage.name) + '</span>' +
+          '<span class="mm-reach">' + reachCount + '/' + USERS.length + '</span>' +
+          '<span class="mm-caret">&#9656;</span>' +
+        '</div>' +
+      '</summary>' +
+      '<div class="mm-node-body">' + stageDetailBodyHtml(stage, 'mm') + '</div>' +
+    '</details>';
+}
+
+function renderMindmap() {
+  var cap = containmentCap();
+  var html = ['<div class="mm-tree">', '<div class="mm-root">' + CAMPAIGN_ICON + ' ' + escapeHtml(CAMPAIGN.name) + '</div>'];
+  STAGES.forEach(function(stage) {
+    var reachCount = USERS.filter(function(u) { return revisedStage(u, cap) >= stage.index; }).length;
+    html.push('<div class="mm-connector"></div>');
+    html.push(mindmapNodeHtml(stage, reachCount, cap));
+  });
+  html.push('</div>');
+  var mindmapEl = document.getElementById('diagram-container');
+  mindmapEl.innerHTML = html.join('');
+
+  mindmapEl.querySelectorAll('details.mm-node').forEach(function(details) {
+    details.addEventListener('toggle', function() {
+      if (details.open) expandedMindmapIds.add(details.dataset.stageId);
+      else expandedMindmapIds.delete(details.dataset.stageId);
     });
   });
 
-  killchainEl.querySelectorAll('[data-action]').forEach(function(cb) {
-    cb.addEventListener('change', function() {
-      if (cb.checked) selectedActionIds.add(cb.dataset.action);
-      else selectedActionIds.delete(cb.dataset.action);
-      renderAll();
-    });
-  });
+  wireStageDetailEvents(mindmapEl);
 }
 
 /* ---------- Plan panel ---------- */
@@ -545,6 +589,9 @@ function renderLegend() {
   items.push('<span class="legend-item"><span class="swatch" style="background:' + RULE_COLOR + '">' + RULE_ICON + '</span>Detection rule</span>');
   items.push('<span class="legend-item"><span class="swatch" style="background:' + ACTION_COLOR + '">' + ACTION_ICON + '</span>Response action</span>');
   items.push('<span class="legend-item"><span class="swatch" style="background:' + BLINDSPOT_COLOR + '">' + BLINDSPOT_ICON + '</span>No internal detection (blind spot)</span>');
+  PHASE_ORDER.forEach(function(phase) {
+    items.push('<span class="legend-item"><span class="swatch" style="background:' + PHASE_COLORS[phase] + '"></span>' + PHASE_LABELS[phase] + ' (SANS phase)</span>');
+  });
   document.getElementById('legend').innerHTML = items.join('');
 }
 
@@ -570,80 +617,11 @@ document.querySelectorAll('.view-btn').forEach(function(b) {
 });
 setViewMode('split');
 
-function sanitizeLabel(s, maxLen) {
-  var cleaned = String(s).replace(/["()\[\]{}]/g, '');
-  if (maxLen && cleaned.length > maxLen) cleaned = cleaned.slice(0, maxLen - 1) + '…';
-  return cleaned;
-}
-
-function buildDiagramDef(cap) {
-  var lines = ['flowchart TD', 'CAMP["' + CAMPAIGN_ICON + ' ' + sanitizeLabel(CAMPAIGN.name, 30) + '"]'];
-  var prevNode = 'CAMP';
-
-  STAGES.forEach(function(stage, i) {
-    var sNode = 'S' + stage.index;
-    var capped = cap !== Infinity && stage.index > cap;
-    lines.push(sNode + '["' + STAGE_ICONS[stage.index] + ' ' + stage.index + '. ' + sanitizeLabel(stage.name, 30) + '"]');
-    lines.push(prevNode + ' --> ' + sNode);
-    lines.push('class ' + sNode + ' stage' + stage.index + (capped ? 'Capped' : ''));
-    prevNode = sNode;
-
-    if (stage.rules.length) {
-      stage.rules.forEach(function(r, ri) {
-        var rNode = 'R' + stage.index + '_' + ri;
-        lines.push(rNode + '["' + RULE_ICON + ' ' + sanitizeLabel(r.id, 24) + '"]');
-        lines.push(sNode + ' -.->|detects| ' + rNode);
-        lines.push('class ' + rNode + ' ruleNode');
-      });
-    } else {
-      var nrNode = 'NR' + stage.index;
-      lines.push(nrNode + '["' + BLINDSPOT_ICON + ' no internal rule"]');
-      lines.push(sNode + ' -.-> ' + nrNode);
-      lines.push('class ' + nrNode + ' blindSpotNode');
-    }
-
-    stage.actions.forEach(function(a, ai) {
-      var aNode = 'A' + stage.index + '_' + ai;
-      var selected = selectedActionIds.has(a.id);
-      lines.push(aNode + '["' + ACTION_ICON + ' ' + sanitizeLabel(a.label, 34) + '"]');
-      lines.push(sNode + ' --> ' + aNode);
-      lines.push('class ' + aNode + (selected ? ' actionSelected' : ' actionNode'));
-      if (i < STAGES.length - 1) {
-        lines.push(aNode + ' -.->|would stop| S' + STAGES[i + 1].index);
-      }
-    });
-  });
-
-  lines.push('classDef campNode fill:#475569,color:#fff,stroke:#334155');
-  lines.push('classDef ruleNode fill:' + RULE_COLOR + ',color:#fff,stroke:#5b21b6');
-  lines.push('classDef actionNode fill:' + ACTION_COLOR + ',color:#fff,stroke:#0f766e');
-  lines.push('classDef actionSelected fill:' + ACTION_COLOR + ',color:#fff,stroke:#fff,stroke-width:3px');
-  lines.push('classDef blindSpotNode fill:' + BLINDSPOT_COLOR + ',color:#fff,stroke:#4b5563,stroke-dasharray: 3 3');
-  STAGE_COLORS.forEach(function(color, idx) {
-    lines.push('classDef stage' + idx + ' fill:' + color + ',color:#fff,stroke:#00000033');
-    lines.push('classDef stage' + idx + 'Capped fill:' + color + ',color:#fff,stroke:#00000033,opacity:0.3');
-  });
-  lines.push('class CAMP campNode');
-
-  return lines.join('\\n');
-}
-
-var diagramRenderCounter = 0;
-function renderDiagram() {
-  var cap = containmentCap();
-  var container = document.getElementById('diagram-container');
-  mermaid.render('mmd-incident-' + (diagramRenderCounter++), buildDiagramDef(cap)).then(function(res) {
-    container.innerHTML = useNaturalSvgSize(res.svg);
-  }).catch(function(err) {
-    container.innerHTML = '<div class="narrative">Could not render diagram: ' + escapeHtml(String(err)) + '</div>';
-  });
-}
-
 function renderAll() {
   renderKillchain();
   renderPlan();
   renderKpiAndTriage();
-  renderDiagram();
+  renderMindmap();
 }
 
 renderLegend();
