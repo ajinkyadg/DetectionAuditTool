@@ -106,7 +106,9 @@ _TEMPLATE = """<!doctype html>
   .mm-connector { width: 2px; height: 14px; background: var(--border); margin-left: 18px; }
   .mm-node { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--accent);
              border-radius: 8px; }
-  .mm-node.capped { opacity: 0.5; }
+  .mm-node.needs-work { border-left-color: var(--atrisk) !important; box-shadow: 0 0 0 1px var(--atrisk) inset; }
+  .needs-work-badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 9px;
+                       font-weight: 700; text-transform: uppercase; color: #fff; background: var(--atrisk); flex: none; }
   .mm-node > summary { list-style: none; cursor: pointer; padding: 8px 10px; display: flex; }
   .mm-node > summary::-webkit-details-marker { display: none; }
   .mm-node-head { display: flex; align-items: center; gap: 8px; width: 100%; }
@@ -120,7 +122,7 @@ _TEMPLATE = """<!doctype html>
   .killchain { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
   .stage-card { background: var(--card); border: 1px solid var(--border); border-top: 3px solid var(--accent);
                 border-radius: 10px; padding: 0; width: 100%; }
-  .stage-card.capped { opacity: 0.55; }
+  .stage-card.needs-work { border-top-color: var(--atrisk) !important; box-shadow: 0 0 0 1px var(--atrisk) inset; }
   .stage-card > summary { list-style: none; cursor: pointer; padding: 12px 14px; }
   .stage-card > summary::-webkit-details-marker { display: none; }
   .stage-body { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 8px; }
@@ -195,7 +197,10 @@ _TEMPLATE = """<!doctype html>
     <div class="diagram-panel" id="diagram-panel">
       <div class="diagram-head">
         <h2>Kill Chain - click a stage to expand</h2>
-        <button class="legend-toggle" id="legend-toggle" type="button">Legend</button>
+        <div style="display:flex; gap:6px;">
+          <button class="legend-toggle" id="sound-toggle" type="button">&#128264; Sound: On</button>
+          <button class="legend-toggle" id="legend-toggle" type="button">Legend</button>
+        </div>
       </div>
       <div class="legend" id="legend"></div>
       <div id="diagram-container"><div class="narrative">Rendering diagram...</div></div>
@@ -252,6 +257,42 @@ const STATUS_ICONS = { safe: '✅', unknown: '❔', at_risk: '⚠', compromised:
 const PHASE_LABELS = { preparation: 'Preparation', containment: 'Containment', eradication: 'Eradication', recovery: 'Recovery' };
 const PHASE_COLORS = { preparation: '#64748b', containment: '#d97706', eradication: '#dc2626', recovery: '#16a34a' };
 const PHASE_ORDER = ['preparation', 'containment', 'eradication', 'recovery'];
+const PHASE_ANNOUNCEMENTS = {
+  preparation: 'Preparation control online.',
+  containment: 'Threat contained.',
+  eradication: 'Threat eradicated.',
+  recovery: 'Recovery complete.',
+};
+
+/* ---------- Voice status calls (browser speech synthesis - no download, no CDN) ---------- */
+var soundEnabled = true;
+var availableVoices = [];
+function loadVoices() {
+  if (window.speechSynthesis) availableVoices = window.speechSynthesis.getVoices();
+}
+if (window.speechSynthesis) {
+  loadVoices();
+  window.speechSynthesis.onvoiceschanged = loadVoices;
+}
+function pickDeepVoice() {
+  // Voice availability/naming is entirely OS/browser-dependent - there's no
+  // portable way to ask for "a deep voice" directly, so this just prefers
+  // whatever's most likely to sound lower-pitched, and falls back gracefully.
+  var preferred = availableVoices.find(function(v) { return /david|daniel|alex|fred|male/i.test(v.name); });
+  return preferred || availableVoices[0];
+}
+function announcePhase(phase) {
+  if (!soundEnabled || !window.speechSynthesis) return;
+  var text = PHASE_ANNOUNCEMENTS[phase];
+  if (!text) return;
+  window.speechSynthesis.cancel();
+  var utter = new SpeechSynthesisUtterance(text);
+  var voice = pickDeepVoice();
+  if (voice) utter.voice = voice;
+  utter.pitch = 0.55;
+  utter.rate = 0.92;
+  window.speechSynthesis.speak(utter);
+}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, function(c) {
@@ -329,6 +370,20 @@ function ruleChipsHtml(rules, stageId, containerKind, idPrefix) {
 /* Shared detail content for a stage - used by both the mind map node body and
    the text accordion body, so the two views can never drift out of sync.
    idPrefix keeps container ids unique when both views render at once (Split mode). */
+function stageNeedsWork(stage) {
+  var noRule = stage.rules.length === 0;
+  var noResponse = !stage.actions.some(function(a) { return selectedActionIds.has(a.id); });
+  return { noRule: noRule, noResponse: noResponse, any: noRule || noResponse };
+}
+
+function needsWorkBadgeHtml(work) {
+  if (!work.any) return '';
+  var label = work.noRule && work.noResponse ? 'No detection, no plan'
+    : work.noRule ? 'No detection'
+    : 'No response planned';
+  return '<span class="needs-work-badge">' + label + '</span>';
+}
+
 function stageDetailBodyHtml(stage, idPrefix) {
   var rulesHtml = stage.rules.length
     ? ruleChipsHtml(stage.rules, stage.id, 'rules', idPrefix)
@@ -339,10 +394,13 @@ function stageDetailBodyHtml(stage, idPrefix) {
     : '';
   var blindSpot = stage.blind_spot_note
     ? '<div class="blind-spot">Blind spot: ' + escapeHtml(stage.blind_spot_note) + '</div>' : '';
+  var work = stageNeedsWork(stage);
+  var planGap = work.noResponse
+    ? '<div class="blind-spot">Not yet in your plan - no response action checked for this stage.</div>' : '';
   var actionsHtml = stage.actions.map(function(a) {
     var checked = selectedActionIds.has(a.id) ? ' checked' : '';
     var phaseColor = PHASE_COLORS[a.phase] || PHASE_COLORS.containment;
-    return '<label class="action-row"><input type="checkbox" data-action="' + escapeHtml(a.id) + '"' + checked + '> ' +
+    return '<label class="action-row"><input type="checkbox" data-action="' + escapeHtml(a.id) + '" data-phase="' + escapeHtml(a.phase) + '"' + checked + '> ' +
       '<span class="phase-badge" style="background:' + phaseColor + '">' + escapeHtml(PHASE_LABELS[a.phase] || a.phase) + '</span> ' +
       escapeHtml(a.label) + '</label>';
   }).join('');
@@ -350,6 +408,7 @@ function stageDetailBodyHtml(stage, idPrefix) {
     '<div>' + stage.mitre.map(function(m) { return '<span class="chip">' + escapeHtml(m) + '</span>'; }).join('') + '</div>' +
     '<div class="narrative">' + escapeHtml(stage.narrative) + '</div>' +
     blindSpot +
+    planGap +
     '<div class="section-title">Identification (detection rule)</div>' +
     '<div id="' + idPrefix + '-rules-' + stage.id + '">' + rulesHtml + '</div>' +
     parallelSection +
@@ -379,20 +438,24 @@ function wireStageDetailEvents(containerEl) {
 
   containerEl.querySelectorAll('[data-action]').forEach(function(cb) {
     cb.addEventListener('change', function() {
-      if (cb.checked) selectedActionIds.add(cb.dataset.action);
-      else selectedActionIds.delete(cb.dataset.action);
+      if (cb.checked) {
+        selectedActionIds.add(cb.dataset.action);
+        announcePhase(cb.dataset.phase);
+      } else {
+        selectedActionIds.delete(cb.dataset.action);
+      }
       renderAll();
     });
   });
 }
 
-function stageCardHtml(stage, reachCount, cap) {
-  var capped = cap !== Infinity && stage.index > cap;
+function stageCardHtml(stage, reachCount) {
   var borderColor = STAGE_COLORS[stage.index] || '#2563eb';
   var icon = STAGE_ICONS[stage.index] || '';
   var isOpen = stage.id === expandedStageId;
+  var work = stageNeedsWork(stage);
   return '' +
-    '<details class="stage-card' + (capped ? ' capped' : '') + '" data-stage-id="' + stage.id + '"' +
+    '<details class="stage-card' + (work.any ? ' needs-work' : '') + '" data-stage-id="' + stage.id + '"' +
         ' style="border-top-color:' + borderColor + '"' + (isOpen ? ' open' : '') + '>' +
       '<summary>' +
         '<div class="stage-header">' +
@@ -401,6 +464,7 @@ function stageCardHtml(stage, reachCount, cap) {
             '<h3><span class="stage-idx" style="background:' + borderColor + '">' + stage.index + '</span>' + escapeHtml(stage.name) + '</h3>' +
             '<div class="reach-inline">' + reachCount + ' / ' + USERS.length + ' users reached this stage</div>' +
           '</div>' +
+          needsWorkBadgeHtml(work) +
           '<span class="chevron">&#9656;</span>' +
         '</div>' +
       '</summary>' +
@@ -413,7 +477,7 @@ function renderKillchain() {
   var html = [];
   STAGES.forEach(function(stage) {
     var reachCount = USERS.filter(function(u) { return revisedStage(u, cap) >= stage.index; }).length;
-    html.push(stageCardHtml(stage, reachCount, cap));
+    html.push(stageCardHtml(stage, reachCount));
   });
   var killchainEl = document.getElementById('killchain');
   killchainEl.innerHTML = html.join('');
@@ -435,19 +499,20 @@ function renderKillchain() {
 }
 
 /* ---------- Mind map: expand/collapse per node, vertical timeline ---------- */
-function mindmapNodeHtml(stage, reachCount, cap) {
-  var capped = cap !== Infinity && stage.index > cap;
+function mindmapNodeHtml(stage, reachCount) {
   var color = STAGE_COLORS[stage.index] || '#2563eb';
   var icon = STAGE_ICONS[stage.index] || '';
   var isOpen = expandedMindmapIds.has(stage.id);
+  var work = stageNeedsWork(stage);
   return '' +
-    '<details class="mm-node' + (capped ? ' capped' : '') + '" data-stage-id="' + stage.id + '"' +
+    '<details class="mm-node' + (work.any ? ' needs-work' : '') + '" data-stage-id="' + stage.id + '"' +
         ' style="border-left-color:' + color + '"' + (isOpen ? ' open' : '') + '>' +
       '<summary>' +
         '<div class="mm-node-head">' +
           '<span class="mm-icon" style="background:' + color + '">' + icon + '</span>' +
           '<span class="mm-node-title">' + stage.index + '. ' + escapeHtml(stage.name) + '</span>' +
           '<span class="mm-reach">' + reachCount + '/' + USERS.length + '</span>' +
+          needsWorkBadgeHtml(work) +
           '<span class="mm-caret">&#9656;</span>' +
         '</div>' +
       '</summary>' +
@@ -461,7 +526,7 @@ function renderMindmap() {
   STAGES.forEach(function(stage) {
     var reachCount = USERS.filter(function(u) { return revisedStage(u, cap) >= stage.index; }).length;
     html.push('<div class="mm-connector"></div>');
-    html.push(mindmapNodeHtml(stage, reachCount, cap));
+    html.push(mindmapNodeHtml(stage, reachCount));
   });
   html.push('</div>');
   var mindmapEl = document.getElementById('diagram-container');
@@ -598,6 +663,18 @@ function renderLegend() {
 document.getElementById('legend-toggle').addEventListener('click', function() {
   document.getElementById('legend').classList.toggle('open');
 });
+
+var soundToggleEl = document.getElementById('sound-toggle');
+if (!window.speechSynthesis) {
+  soundToggleEl.textContent = '🔇 Sound: unavailable';
+  soundToggleEl.disabled = true;
+} else {
+  soundToggleEl.addEventListener('click', function() {
+    soundEnabled = !soundEnabled;
+    soundToggleEl.innerHTML = soundEnabled ? '&#128264; Sound: On' : '&#128263; Sound: Off';
+    if (!soundEnabled) window.speechSynthesis.cancel();
+  });
+}
 
 /* Shadow on the sticky diagram bar once the page has actually scrolled under it */
 var diagramPanelEl = document.getElementById('diagram-panel');
