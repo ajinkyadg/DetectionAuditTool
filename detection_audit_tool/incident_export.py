@@ -197,7 +197,31 @@ const CAMPAIGN_ICON = '\U0001F3A3';
 const STATUS_ICONS = { safe: '✅', unknown: '❔', at_risk: '⚠', compromised: '\U0001F6A8', compromised_active: '\U0001F525' };
 
 var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-mermaid.initialize({ startOnLoad: false, theme: prefersDark ? 'dark' : 'default' });
+mermaid.initialize({
+  startOnLoad: false,
+  theme: prefersDark ? 'dark' : 'default',
+  themeVariables: { fontSize: '16px' },
+  flowchart: { htmlLabels: true, nodeSpacing: 40, rankSpacing: 55 },
+});
+
+/* Mermaid ships each SVG at width="100%" with a max-width style, so it
+   shrinks (text included) to fit whatever container it lands in - great for
+   a small diagram, unreadable for a wide branching one. Force it back to
+   its natural pixel size and let the container scroll instead of squeezing. */
+function useNaturalSvgSize(svgMarkup) {
+  var wrapper = document.createElement('div');
+  wrapper.innerHTML = svgMarkup;
+  var svg = wrapper.querySelector('svg');
+  if (svg) {
+    var viewBox = (svg.getAttribute('viewBox') || '').split(/\s+/).map(Number);
+    if (viewBox.length === 4 && viewBox[2] && viewBox[3]) {
+      svg.setAttribute('width', Math.round(viewBox[2]) + 'px');
+      svg.setAttribute('height', Math.round(viewBox[3]) + 'px');
+      svg.style.maxWidth = 'none';
+    }
+  }
+  return wrapper.innerHTML;
+}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, function(c) {
@@ -535,7 +559,7 @@ function renderDiagram() {
   var cap = containmentCap();
   var container = document.getElementById('diagram-container');
   mermaid.render('mmd-incident-' + (diagramRenderCounter++), buildDiagramDef(cap)).then(function(res) {
-    container.innerHTML = res.svg;
+    container.innerHTML = useNaturalSvgSize(res.svg);
   }).catch(function(err) {
     container.innerHTML = '<div class="narrative">Could not render diagram: ' + escapeHtml(String(err)) + '</div>';
   });
