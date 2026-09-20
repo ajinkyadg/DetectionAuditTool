@@ -64,22 +64,37 @@ _TEMPLATE = """<!doctype html>
   .campaign-card .row div { color: var(--muted); }
   .campaign-card strong { color: var(--text); }
   main { padding: 0 24px 40px; max-width: 1200px; }
-  .diagram-panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-                    padding: 16px; margin-bottom: 20px; overflow-x: auto; }
-  .diagram-panel h2 { margin: 0 0 4px; font-size: 14px; }
-  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0 14px; font-size: 11px; color: var(--muted); }
+  .diagram-panel { background: var(--bg); border-bottom: 1px solid var(--border); padding: 10px 0 12px;
+                    position: sticky; top: 0; z-index: 20; }
+  .diagram-panel.stuck { box-shadow: 0 6px 14px -8px rgba(0,0,0,.35); }
+  .diagram-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .diagram-panel h2 { margin: 0; font-size: 13px; }
+  .legend-toggle { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 999px;
+                    font-size: 11px; padding: 3px 10px; cursor: pointer; }
+  .legend { display: none; flex-wrap: wrap; gap: 10px; margin: 8px 0 0; font-size: 11px; color: var(--muted); }
+  .legend.open { display: flex; }
   .legend-item { display: flex; align-items: center; gap: 5px; }
-  .swatch { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
-  #diagram-container { min-height: 120px; }
-  .killchain { display: flex; gap: 4px; align-items: stretch; overflow-x: auto; padding-bottom: 8px; }
-  .stage-card { background: var(--card); border: 1px solid var(--border); border-top: 4px solid var(--accent);
-                border-radius: 10px; padding: 14px; width: 260px; min-width: 260px;
-                display: flex; flex-direction: column; gap: 8px; }
+  .swatch { width: 16px; height: 16px; border-radius: 5px; display: inline-flex; align-items: center;
+            justify-content: center; font-size: 10px; line-height: 1; }
+  #diagram-container { min-height: 90px; max-height: 42vh; overflow: auto; }
+  .killchain { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+  .stage-card { background: var(--card); border: 1px solid var(--border); border-top: 3px solid var(--accent);
+                border-radius: 10px; padding: 0; width: 100%; }
   .stage-card.capped { opacity: 0.55; }
-  .arrow { display: flex; align-items: center; color: var(--muted); font-size: 20px; padding: 0 2px; }
+  .stage-card > summary { list-style: none; cursor: pointer; padding: 12px 14px; }
+  .stage-card > summary::-webkit-details-marker { display: none; }
+  .stage-body { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 8px; }
   .stage-idx { display: inline-block; width: 20px; height: 20px; line-height: 20px; text-align: center;
                border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; margin-right: 6px; }
+  .stage-header { display: flex; align-items: center; gap: 10px; }
+  .stage-icon-circle { flex: none; width: 32px; height: 32px; border-radius: 50%; display: flex;
+                        align-items: center; justify-content: center; font-size: 15px;
+                        box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+  .stage-summary-text { flex: 1; min-width: 0; }
   .stage-card h3 { margin: 0; font-size: 14px; display: flex; align-items: center; }
+  .reach-inline { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .chevron { color: var(--muted); font-size: 12px; transition: transform .15s; flex: none; }
+  .stage-card[open] .chevron { transform: rotate(90deg); }
   .reach-count { font-size: 22px; font-weight: 700; }
   .reach-label { font-size: 11px; color: var(--muted); }
   .chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px;
@@ -123,13 +138,15 @@ _TEMPLATE = """<!doctype html>
 <body>
 <header>
   <h1>Phishing Incident Walkthrough</h1>
-  <div class="sub">Click a stage to see the detection rule and response actions available there. Check response actions to see who this would have saved.</div>
+  <div class="sub">A worked kill chain, correlated from real log evidence. Expand a stage for its detection rule and response actions.</div>
 </header>
 <div class="campaign-card" id="campaign-card"></div>
 <main>
-  <div class="diagram-panel">
-    <h2>Kill Chain Diagram</h2>
-    <div class="sub" style="margin-bottom:0;">How each stage, detection rule, and response action relate - dotted arrows show what a rule detects and what an action would have stopped.</div>
+  <div class="diagram-panel" id="diagram-panel">
+    <div class="diagram-head">
+      <h2>Kill Chain - click a stage below for detail</h2>
+      <button class="legend-toggle" id="legend-toggle" type="button">Legend</button>
+    </div>
     <div class="legend" id="legend"></div>
     <div id="diagram-container"><div class="narrative">Rendering diagram...</div></div>
   </div>
@@ -169,9 +186,15 @@ const STAGES = __STAGES_JSON__;
 const USERS = __USERS_JSON__;
 
 const STAGE_COLORS = ['#2563eb', '#d97706', '#ea580c', '#dc2626', '#7c1d1d'];
+const STAGE_ICONS = ['\U0001F4E7', '\U0001F5B1', '\U0001F511', '\U0001F575', '\U0001F4E4'];
 const RULE_COLOR = '#7c3aed';
 const ACTION_COLOR = '#0d9488';
 const BLINDSPOT_COLOR = '#6b7280';
+const RULE_ICON = '\U0001F50D';
+const ACTION_ICON = '\U0001F6E1';
+const BLINDSPOT_ICON = '❓';
+const CAMPAIGN_ICON = '\U0001F3A3';
+const STATUS_ICONS = { safe: '✅', unknown: '❔', at_risk: '⚠', compromised: '\U0001F6A8', compromised_active: '\U0001F525' };
 
 var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
 mermaid.initialize({ startOnLoad: false, theme: prefersDark ? 'dark' : 'default' });
@@ -239,6 +262,8 @@ function ruleDetailHtml(r) {
     '</div>';
 }
 
+var expandedStageId = STAGES[0].id;
+
 function stageCardHtml(stage, reachCount, cap) {
   var capped = cap !== Infinity && stage.index > cap;
   var rulesHtml = stage.rules.length
@@ -253,32 +278,57 @@ function stageCardHtml(stage, reachCount, cap) {
     return '<label class="action-row"><input type="checkbox" data-action="' + escapeHtml(a.id) + '"' + checked + '> ' + escapeHtml(a.label) + '</label>';
   }).join('');
   var borderColor = STAGE_COLORS[stage.index] || '#2563eb';
+  var icon = STAGE_ICONS[stage.index] || '';
+  var isOpen = stage.id === expandedStageId;
   return '' +
-    '<div class="stage-card' + (capped ? ' capped' : '') + '" style="border-top-color:' + borderColor + '">' +
-      '<h3><span class="stage-idx" style="background:' + borderColor + '">' + stage.index + '</span>' + escapeHtml(stage.name) + '</h3>' +
-      '<div>' + stage.mitre.map(function(m) { return '<span class="chip">' + escapeHtml(m) + '</span>'; }).join('') + '</div>' +
-      '<div class="reach-count">' + reachCount + ' / ' + USERS.length + '</div>' +
-      '<div class="reach-label">users reached this stage</div>' +
-      '<div class="narrative">' + escapeHtml(stage.narrative) + '</div>' +
-      blindSpot +
-      '<div class="section-title">Detection rule</div>' +
-      '<div id="rules-' + stage.id + '">' + rulesHtml + '</div>' +
-      '<div class="section-title">Response actions</div>' +
-      actionsHtml +
-    '</div>';
+    '<details class="stage-card' + (capped ? ' capped' : '') + '" data-stage-id="' + stage.id + '"' +
+        ' style="border-top-color:' + borderColor + '"' + (isOpen ? ' open' : '') + '>' +
+      '<summary>' +
+        '<div class="stage-header">' +
+          '<span class="stage-icon-circle" style="background:' + borderColor + '">' + icon + '</span>' +
+          '<div class="stage-summary-text">' +
+            '<h3><span class="stage-idx" style="background:' + borderColor + '">' + stage.index + '</span>' + escapeHtml(stage.name) + '</h3>' +
+            '<div class="reach-inline">' + reachCount + ' / ' + USERS.length + ' users reached this stage</div>' +
+          '</div>' +
+          '<span class="chevron">&#9656;</span>' +
+        '</div>' +
+      '</summary>' +
+      '<div class="stage-body">' +
+        '<div>' + stage.mitre.map(function(m) { return '<span class="chip">' + escapeHtml(m) + '</span>'; }).join('') + '</div>' +
+        '<div class="narrative">' + escapeHtml(stage.narrative) + '</div>' +
+        blindSpot +
+        '<div class="section-title">Detection rule</div>' +
+        '<div id="rules-' + stage.id + '">' + rulesHtml + '</div>' +
+        '<div class="section-title">Response actions</div>' +
+        actionsHtml +
+      '</div>' +
+    '</details>';
 }
 
 function renderKillchain() {
   var cap = containmentCap();
   var html = [];
-  STAGES.forEach(function(stage, i) {
+  STAGES.forEach(function(stage) {
     var reachCount = USERS.filter(function(u) { return revisedStage(u, cap) >= stage.index; }).length;
-    if (i > 0) html.push('<div class="arrow">&rarr;</div>');
     html.push(stageCardHtml(stage, reachCount, cap));
   });
-  document.getElementById('killchain').innerHTML = html.join('');
+  var killchainEl = document.getElementById('killchain');
+  killchainEl.innerHTML = html.join('');
 
-  document.querySelectorAll('.rule-chip-btn').forEach(function(btn) {
+  killchainEl.querySelectorAll('details.stage-card').forEach(function(details) {
+    details.addEventListener('toggle', function() {
+      if (details.open) {
+        expandedStageId = details.dataset.stageId;
+        killchainEl.querySelectorAll('details.stage-card').forEach(function(other) {
+          if (other !== details) other.open = false;
+        });
+      } else if (expandedStageId === details.dataset.stageId) {
+        expandedStageId = null;
+      }
+    });
+  });
+
+  killchainEl.querySelectorAll('.rule-chip-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var stageId = btn.dataset.stage, ruleId = btn.dataset.rule;
       var container = document.getElementById('rules-' + stageId);
@@ -295,7 +345,7 @@ function renderKillchain() {
     });
   });
 
-  document.querySelectorAll('[data-action]').forEach(function(cb) {
+  killchainEl.querySelectorAll('[data-action]').forEach(function(cb) {
     cb.addEventListener('change', function() {
       if (cb.checked) selectedActionIds.add(cb.dataset.action);
       else selectedActionIds.delete(cb.dataset.action);
@@ -342,7 +392,7 @@ function kpiHtml(statuses) {
   STATUS_ORDER.forEach(function(s) { counts[s] = 0; });
   statuses.forEach(function(s) { counts[s]++; });
   return STATUS_ORDER.map(function(s) {
-    return '<div class="kpi ' + s + '"><div class="num">' + counts[s] + '</div><div class="lbl">' + STATUS_LABELS[s] + '</div></div>';
+    return '<div class="kpi ' + s + '"><div class="num">' + STATUS_ICONS[s] + ' ' + counts[s] + '</div><div class="lbl">' + STATUS_LABELS[s] + '</div></div>';
   }).join('');
 }
 
@@ -369,9 +419,9 @@ function renderKpiAndTriage() {
       '<td>' + escapeHtml(u.name) + '</td>' +
       '<td>' + escapeHtml(u.mailbox) + '</td>' +
       '<td>' + escapeHtml(stageNameByIndex[revised] || String(revised)) + '</td>' +
-      '<td><span class="status-badge status-' + u.status + '">' + STATUS_LABELS[u.status] + '</span></td>' +
+      '<td><span class="status-badge status-' + u.status + '">' + STATUS_ICONS[u.status] + ' ' + STATUS_LABELS[u.status] + '</span></td>' +
       '<td class="arrow-cell">' + (changed ? '&rarr;' : '') + '</td>' +
-      '<td><span class="status-badge status-' + revisedStatus + '">' + STATUS_LABELS[revisedStatus] + '</span></td>' +
+      '<td><span class="status-badge status-' + revisedStatus + '">' + STATUS_ICONS[revisedStatus] + ' ' + STATUS_LABELS[revisedStatus] + '</span></td>' +
       '<td>' + escapeHtml(u.note) + '</td>' +
       '<td>' + evidenceCell + '</td>' +
     '</tr>';
@@ -404,13 +454,23 @@ function renderKpiAndTriage() {
 /* ---------- Kill chain diagram (Mermaid) ---------- */
 function renderLegend() {
   var items = STAGES.map(function(s, i) {
-    return '<span class="legend-item"><span class="swatch" style="background:' + STAGE_COLORS[i] + '"></span>' + escapeHtml(s.name) + '</span>';
+    return '<span class="legend-item"><span class="swatch" style="background:' + STAGE_COLORS[i] + '">' + STAGE_ICONS[i] + '</span>' + escapeHtml(s.name) + '</span>';
   });
-  items.push('<span class="legend-item"><span class="swatch" style="background:' + RULE_COLOR + '"></span>Detection rule</span>');
-  items.push('<span class="legend-item"><span class="swatch" style="background:' + ACTION_COLOR + '"></span>Response action</span>');
-  items.push('<span class="legend-item"><span class="swatch" style="background:' + BLINDSPOT_COLOR + '"></span>No internal detection (blind spot)</span>');
+  items.push('<span class="legend-item"><span class="swatch" style="background:' + RULE_COLOR + '">' + RULE_ICON + '</span>Detection rule</span>');
+  items.push('<span class="legend-item"><span class="swatch" style="background:' + ACTION_COLOR + '">' + ACTION_ICON + '</span>Response action</span>');
+  items.push('<span class="legend-item"><span class="swatch" style="background:' + BLINDSPOT_COLOR + '">' + BLINDSPOT_ICON + '</span>No internal detection (blind spot)</span>');
   document.getElementById('legend').innerHTML = items.join('');
 }
+
+document.getElementById('legend-toggle').addEventListener('click', function() {
+  document.getElementById('legend').classList.toggle('open');
+});
+
+/* Shadow on the sticky diagram bar once the page has actually scrolled under it */
+var diagramPanelEl = document.getElementById('diagram-panel');
+window.addEventListener('scroll', function() {
+  diagramPanelEl.classList.toggle('stuck', window.scrollY > 4);
+});
 
 function sanitizeLabel(s, maxLen) {
   var cleaned = String(s).replace(/["()\[\]{}]/g, '');
@@ -419,13 +479,13 @@ function sanitizeLabel(s, maxLen) {
 }
 
 function buildDiagramDef(cap) {
-  var lines = ['flowchart TD', 'CAMP["' + sanitizeLabel(CAMPAIGN.name, 40) + '"]'];
+  var lines = ['flowchart LR', 'CAMP["' + CAMPAIGN_ICON + ' ' + sanitizeLabel(CAMPAIGN.name, 30) + '"]'];
   var prevNode = 'CAMP';
 
   STAGES.forEach(function(stage, i) {
     var sNode = 'S' + stage.index;
     var capped = cap !== Infinity && stage.index > cap;
-    lines.push(sNode + '["' + stage.index + '. ' + sanitizeLabel(stage.name, 30) + '"]');
+    lines.push(sNode + '["' + STAGE_ICONS[stage.index] + ' ' + stage.index + '. ' + sanitizeLabel(stage.name, 30) + '"]');
     lines.push(prevNode + ' --> ' + sNode);
     lines.push('class ' + sNode + ' stage' + stage.index + (capped ? 'Capped' : ''));
     prevNode = sNode;
@@ -433,13 +493,13 @@ function buildDiagramDef(cap) {
     if (stage.rules.length) {
       stage.rules.forEach(function(r, ri) {
         var rNode = 'R' + stage.index + '_' + ri;
-        lines.push(rNode + '["' + sanitizeLabel(r.id, 24) + '"]');
+        lines.push(rNode + '["' + RULE_ICON + ' ' + sanitizeLabel(r.id, 24) + '"]');
         lines.push(sNode + ' -.->|detects| ' + rNode);
         lines.push('class ' + rNode + ' ruleNode');
       });
     } else {
       var nrNode = 'NR' + stage.index;
-      lines.push(nrNode + '["no internal rule"]');
+      lines.push(nrNode + '["' + BLINDSPOT_ICON + ' no internal rule"]');
       lines.push(sNode + ' -.-> ' + nrNode);
       lines.push('class ' + nrNode + ' blindSpotNode');
     }
@@ -447,7 +507,7 @@ function buildDiagramDef(cap) {
     stage.actions.forEach(function(a, ai) {
       var aNode = 'A' + stage.index + '_' + ai;
       var selected = selectedActionIds.has(a.id);
-      lines.push(aNode + '["' + sanitizeLabel(a.label, 34) + '"]');
+      lines.push(aNode + '["' + ACTION_ICON + ' ' + sanitizeLabel(a.label, 34) + '"]');
       lines.push(sNode + ' --> ' + aNode);
       lines.push('class ' + aNode + (selected ? ' actionSelected' : ' actionNode'));
       if (i < STAGES.length - 1) {
