@@ -7,7 +7,7 @@
     dat lookup 4625
     dat search "brute force"
     dat simulate brute-force
-    dat simulate phishing [--out phishing_incident.html]
+    dat simulate phishing [--out phishing_incident.html] [--json incidents/phishing_account_takeover.json]
     dat run --logs sample_logs/windows_security_sample.json
     dat audit --logs sample_logs/windows_security_sample.json
     dat export-html [--out catalogue.html]
@@ -24,7 +24,7 @@ from typing import List
 from .audit import audit_rules
 from .event_catalogue import DEFAULT_CATALOGUE_PATH, find_event, load_windows_events
 from .html_export import export_html
-from .incident_export import export_phishing_incident_html
+from .incident_export import export_phishing_incident_html, export_phishing_incident_json
 from .lookup import lookup_event, search
 from .matcher import run_rules
 from .models import Event, Rule
@@ -189,10 +189,14 @@ def cmd_simulate_phishing(args: argparse.Namespace) -> None:
     for user in USERS:
         print(f"{user.name:<14} ({user.mailbox}): {user.status.upper()}")
         print(f"    {user.note}")
-    if args.out:
+    if args.out or args.json:
         rules = _load(args.rules_dir)
-        export_phishing_incident_html(rules, args.out)
-        print(f"\nwrote interactive walkthrough to {args.out}")
+        if args.out:
+            export_phishing_incident_html(rules, args.out)
+            print(f"\nwrote interactive walkthrough to {args.out}")
+        if args.json:
+            export_phishing_incident_json(rules, args.json)
+            print(f"wrote incident data to {args.json}")
 
 
 def cmd_run(args: argparse.Namespace) -> None:
@@ -278,6 +282,10 @@ def build_parser() -> argparse.ArgumentParser:
         "phishing", help="phishing -> credential harvest -> account takeover, with interactive HTML walkthrough"
     )
     p_sim_phish.add_argument("--out", help="write the interactive HTML kill-chain walkthrough to this path")
+    p_sim_phish.add_argument(
+        "--json",
+        help="write the incident as JSON data (campaign/stages/users) for another renderer to consume, e.g. SignalHunt",
+    )
     p_sim_phish.set_defaults(func=cmd_simulate_phishing)
 
     p_run = sub.add_parser("run", help="run all rules against a log file")

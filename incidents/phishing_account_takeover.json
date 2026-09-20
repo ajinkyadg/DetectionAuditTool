@@ -1,0 +1,648 @@
+{
+  "campaign": {
+    "name": "Password Expiry Phishing Campaign",
+    "sender_display_name": "IT Helpdesk",
+    "sender_address": "it-support@corp-secure-verify.com",
+    "subject": "Action Required: Your password expires today",
+    "lookalike_domain": "corp-secure-verify.com",
+    "phishing_kit_url": "https://corp-secure-verify.com/reset",
+    "sent_at": "2026-04-02T08:45:00+00:00",
+    "recipients": 8
+  },
+  "stages": [
+    {
+      "id": "delivery",
+      "index": 0,
+      "name": "Email Delivered",
+      "mitre": [
+        "T1566.002"
+      ],
+      "narrative": "The spoofed 'IT Helpdesk' email lands in 7 of 8 mailboxes; the email gateway's own sandboxing catches and blocks it for the 8th.",
+      "blind_spot_note": "",
+      "rules": [
+        {
+          "id": "EMAIL-8006",
+          "title": "User-Reported Phishing Email",
+          "description": "Detects a message a mailbox owner flagged as phishing via the client-side \"Report Message\"/\"Report Phishing\" button. Every automated control in this catalogue reacts after the fact - this is the one detection source that can fire before an attacker's link is ever clicked, since it comes from the recipient reading the email rather than a log line. Its coverage depends entirely on security-awareness training and how many recipients actually use the button.\n",
+          "level": "medium",
+          "platform": "email_gateway",
+          "logsource": {
+            "category": "email_gateway"
+          },
+          "mitre_attack": [
+            "T1566.002"
+          ],
+          "event_ids": [
+            "user_report"
+          ],
+          "required_fields": [
+            "reporter",
+            "message_id",
+            "sender",
+            "subject",
+            "report_source"
+          ],
+          "audit_policy": {
+            "gpo_path": "Mail client add-in configuration (Microsoft \"Report Message\"/\"Report Phishing\" add-in, Google Workspace \"Report phishing\", or a third-party button like Cofense/KnowBe4 PhishER) - deploy org-wide via the mail admin console, not opt-in per user.\n",
+            "command": "# Microsoft 365: Deploy the built-in add-in via the Integrated Apps admin center, then route reports to Defender for Office 365 / a shared mailbox your SIEM ingests",
+            "notes": "A single report on a live campaign should be enough to trigger a retroactive search-and-purge across every other mailbox that received the same sender/subject/link - don't wait for a second report before acting.\n"
+          },
+          "false_positives": [
+            "Users over-reporting legitimate marketing/newsletter email as \"phishing\" out of habit - track a false-report rate per user/team to calibrate how much weight to give a single report"
+          ],
+          "detection_type": "selection"
+        }
+      ],
+      "parallel_rules": [],
+      "actions": [
+        {
+          "id": "block-sender",
+          "label": "Retroactively purge / block sender domain at the email gateway",
+          "stage_index": 0,
+          "phase": "containment"
+        },
+        {
+          "id": "url-rewrite",
+          "label": "Enable time-of-click URL rewriting / sandboxing (Safe Links)",
+          "stage_index": 0,
+          "phase": "preparation"
+        }
+      ]
+    },
+    {
+      "id": "click",
+      "index": 1,
+      "name": "Link Clicked",
+      "mitre": [
+        "T1204.001"
+      ],
+      "narrative": "4 recipients click through to the lookalike domain's fake Microsoft-style login page - confirmed as a GET to the phishing URL in the web proxy log, correlated per user below.",
+      "blind_spot_note": "",
+      "rules": [
+        {
+          "id": "WEBPROXY-9002",
+          "title": "Access to a Newly Registered Domain",
+          "description": "Detects a request to a domain the proxy has categorized as newly registered (typically registered within the last 30 days). Phishing and C2 infrastructure is disproportionately hosted on freshly registered domains, since older domains are more likely to already be on reputation block lists.\n",
+          "level": "medium",
+          "platform": "web_proxy",
+          "logsource": {
+            "category": "web_proxy"
+          },
+          "mitre_attack": [
+            "T1566.002"
+          ],
+          "event_ids": [
+            "proxy_request"
+          ],
+          "required_fields": [
+            "action",
+            "category",
+            "domain",
+            "user"
+          ],
+          "audit_policy": {
+            "gpo_path": "Web proxy domain-age / newly-registered-domain category feed",
+            "command": "Enable the proxy's newly-registered-domain or domain-age category (available as a built-in feed on most cloud proxies - Zscaler, Forcepoint, Netskope; on Squid this typically needs an external feed like a WHOIS-age lookup service wired in) and ensure it's logged even when the action taken is \"allow with warning.\"\n",
+            "notes": "Low-signal alone - pair with volume (WEBPROXY-9003) or exfil (WEBPROXY-9004) rules for higher-confidence correlation rather than alerting on every hit.\n"
+          },
+          "false_positives": [
+            "A legitimate new vendor, campaign microsite, or internal project domain that simply hasn't aged past the \"new\" threshold yet",
+            "A CDN or link-shortener edge domain that rotates registrations"
+          ],
+          "detection_type": "selection"
+        }
+      ],
+      "parallel_rules": [],
+      "actions": [
+        {
+          "id": "block-domain-proxy",
+          "label": "Block the lookalike domain at the web proxy/firewall",
+          "stage_index": 1,
+          "phase": "containment"
+        },
+        {
+          "id": "isolate-endpoint",
+          "label": "Isolate the endpoint via EDR network containment",
+          "stage_index": 1,
+          "phase": "containment"
+        }
+      ]
+    },
+    {
+      "id": "credentials",
+      "index": 2,
+      "name": "Credentials Entered",
+      "mitre": [
+        "T1598.003",
+        "T1556"
+      ],
+      "narrative": "3 of those recipients type their corporate username and password into the fake page.",
+      "blind_spot_note": "The credential submission itself happens on attacker-controlled infrastructure - no internal log sees the password. The proxy log's best proxy signal is a POST request to the same phishing URL right after the GET (see per-user evidence below); the first hard confirmation usually comes later, at the attacker sign-in stage.",
+      "rules": [],
+      "parallel_rules": [],
+      "actions": [
+        {
+          "id": "force-reset",
+          "label": "Force a password reset for every user who reached this stage",
+          "stage_index": 2,
+          "phase": "eradication"
+        },
+        {
+          "id": "mfa-reenroll",
+          "label": "Require MFA re-registration before the next sign-in",
+          "stage_index": 2,
+          "phase": "eradication"
+        }
+      ]
+    },
+    {
+      "id": "attacker-logon",
+      "index": 3,
+      "name": "Attacker Signs In",
+      "mitre": [
+        "T1078",
+        "T1078.004"
+      ],
+      "narrative": "The attacker replays the harvested credentials. One attempt is blocked by an MFA challenge it can't satisfy; one succeeds outright from a different country minutes later.",
+      "blind_spot_note": "",
+      "rules": [
+        {
+          "id": "ID-9001",
+          "title": "Impossible Travel Sign-In Risk Detected",
+          "description": "Detects a successful sign-in the identity provider itself has already flagged as \"impossible travel\" (Azure AD Identity Protection's atypical travel risk detection, or Okta ThreatInsight's equivalent) - two successful authentications for the same account from locations too far apart to reach in the elapsed time. This is the classic tell that stolen credentials (e.g. from a phishing kit) are being used from attacker infrastructure shortly after the victim entered them.\n",
+          "level": "critical",
+          "platform": "identity",
+          "logsource": {
+            "category": "identity"
+          },
+          "mitre_attack": [
+            "T1078",
+            "T1078.004"
+          ],
+          "event_ids": [
+            "signin_log"
+          ],
+          "required_fields": [
+            "user_principal_name",
+            "ip_address",
+            "location_country",
+            "risk_detection",
+            "result"
+          ],
+          "audit_policy": {
+            "gpo_path": "Azure AD Identity Protection (requires Azure AD Premium P2) - Risk Detections > sign-in risk policy; or Okta ThreatInsight + Behavior Detection rules under Security > Behavior Detection.\n",
+            "command": "# Azure AD: az ad identity-protection ... (or the Entra admin center Identity Protection blade) - ensure risk detections are exported to your SIEM via the Microsoft Graph identityRiskEvents API or Log Analytics",
+            "notes": "This rule engine matches single events - it does not itself compute geo-velocity across two separate sign-ins. The impossible-travel computation has to happen upstream in the IdP (which is licensed functionality, not free) or in a dedicated correlation search with geo-IP lookups; this rule only consumes that verdict once the IdP produces it. Without a P2/equivalent license, this detection has a real gap, not just a tuning problem.\n"
+          },
+          "false_positives": [
+            "A user genuinely traveling and connecting through a VPN/corporate exit node in a different region than their previous session - correlate with known corporate VPN egress IP ranges before escalating"
+          ],
+          "detection_type": "selection"
+        }
+      ],
+      "parallel_rules": [
+        {
+          "id": "AWS-3001",
+          "title": "AWS Console Login Brute Force",
+          "description": "Detects repeated failed AWS Management Console login attempts (CloudTrail ConsoleLogin events with errorMessage indicating failed authentication) against the same account/source IP within a short window.\n",
+          "level": "high",
+          "platform": "aws",
+          "logsource": {
+            "category": "cloudtrail",
+            "product": "aws"
+          },
+          "mitre_attack": [
+            "T1110",
+            "T1078.004"
+          ],
+          "event_ids": [
+            "ConsoleLogin"
+          ],
+          "required_fields": [
+            "sourceIPAddress",
+            "userIdentity.arn",
+            "userIdentity.accountId",
+            "additionalEventData.MFAUsed"
+          ],
+          "audit_policy": {
+            "gpo_path": "CloudTrail console / Organizations trail",
+            "command": "aws cloudtrail create-trail --name org-trail --is-multi-region-trail --include-global-service-events aws cloudtrail put-event-selectors --trail-name org-trail --event-selectors '[{\"ReadWriteType\":\"All\",\"IncludeManagementEvents\":true}]'\n",
+            "notes": "ConsoleLogin events are only recorded if a CloudTrail trail with management events enabled exists and covers the region. For near-real-time alerting (not just S3-delivered logs), also enable CloudWatch Logs integration on the trail and build a metric filter on this event pattern.\n"
+          },
+          "false_positives": [
+            "Users behind a corporate NAT/VPN mistyping MFA repeatedly"
+          ],
+          "detection_type": "threshold"
+        },
+        {
+          "id": "AWS-3002",
+          "title": "AWS Root Account Usage",
+          "description": "Detects any API call or console login made using the AWS account root user, which should never be used for day-to-day activity per the CIS AWS Foundations Benchmark.\n",
+          "level": "critical",
+          "platform": "aws",
+          "logsource": {
+            "category": "cloudtrail",
+            "product": "aws"
+          },
+          "mitre_attack": [
+            "T1078.004"
+          ],
+          "event_ids": [
+            "*"
+          ],
+          "required_fields": [
+            "eventName",
+            "sourceIPAddress",
+            "userIdentity.accountId",
+            "userIdentity.arn"
+          ],
+          "audit_policy": {
+            "gpo_path": "CloudTrail trail + CloudWatch metric filter/alarm",
+            "command": "aws cloudwatch put-metric-alarm --alarm-name root-account-usage --metric-name RootAccountUsageCount --namespace CISBenchmark --statistic Sum --period 300 --threshold 1 --comparison-operator GreaterThanOrEqualToThreshold\n",
+            "notes": "Requires a CloudTrail trail with management events + a CloudWatch Logs metric filter pattern '{ $.userIdentity.type = \"Root\" }' feeding this alarm - CloudTrail alone only gets you the log, not the alert.\n"
+          },
+          "false_positives": [
+            "Rare legitimate break-glass root usage - should always be a tracked, ticketed event"
+          ],
+          "detection_type": "selection"
+        },
+        {
+          "id": "WAF-5005",
+          "title": "WAF Attack Signatures Followed by a Successful Login (Possible Successful Exploitation)",
+          "description": "Detects a burst of WAF-blocked attack attempts from a source IP, followed by a successful application login from that same IP shortly after. Individually, \"some blocked requests\" and \"a successful login\" are both low-signal - a scanner gets blocked constantly, and most successful logins are legitimate. The correlation is the point: the same source both attacked the application AND got in. This is a cross-log-source rule - it needs WAF logs and web application/server logs correlated by source IP, which most SIEMs treat as two separate data sources that need to be explicitly joined.\n",
+          "level": "critical",
+          "platform": "waf+web_server",
+          "logsource": {
+            "category": "correlation",
+            "product": "waf+web_server"
+          },
+          "mitre_attack": [
+            "T1190",
+            "T1078"
+          ],
+          "event_ids": [
+            "waf_block",
+            "login_success"
+          ],
+          "required_fields": [
+            "src_ip",
+            "action",
+            "event_type",
+            "result"
+          ],
+          "audit_policy": {
+            "gpo_path": "Requires WAF logs and web application authentication logs to land in the same SIEM/log pipeline with a shared, normalized field for source IP - this is a data-engineering prerequisite, not a single toggle.\n",
+            "command": "n/a - cross-source log pipeline configuration",
+            "notes": "This is the highest-value rule in this category precisely because it can't be built from either log source alone - it's the kind of detection that only exists once your logging is unified enough to correlate across systems, which is usually the actual bottleneck, not the detection logic itself.\n"
+          },
+          "false_positives": [
+            "A legitimate user whose browser/extension triggers WAF signatures (e.g. a security-testing browser extension, an overly aggressive ad blocker mangling requests) followed by their own normal login. Rare, but the reason this is \"critical\" and not an auto-block action - it should page a human, not silently lock the account.\n",
+            "A shared corporate NAT IP where one user got flagged and a different legitimate user later logs in from the same address"
+          ],
+          "detection_type": "sequence"
+        },
+        {
+          "id": "WEB-6004",
+          "title": "Successful Application Login",
+          "description": "Records a successful authentication event against the web application. On its own this is completely benign - almost every request session includes one. Its value is as a correlation building block: paired with WAF-5005, a successful login immediately following a burst of WAF-blocked attack attempts from the same source is what turns \"two unremarkable events\" into a critical finding.\n",
+          "level": "low",
+          "platform": "web_server",
+          "logsource": {
+            "category": "web_server"
+          },
+          "mitre_attack": [
+            "T1078"
+          ],
+          "event_ids": [
+            "app_log"
+          ],
+          "required_fields": [
+            "src_ip",
+            "username",
+            "event_type",
+            "result"
+          ],
+          "audit_policy": {
+            "gpo_path": "Application authentication logging - ensure the app logs both success and failure with a normalized event_type/result field, plus source IP.",
+            "command": "n/a - application-level logging configuration, not an OS/infra toggle",
+            "notes": "This is application logging, not web-server access logging - it typically needs to be added explicitly in the app's auth code path, not something you get for free from Apache/Nginx access logs.\n"
+          },
+          "false_positives": [
+            "This is not itself a false-positive-prone rule; nearly every match is a completely normal login. It exists to be correlated, not alerted on alone."
+          ],
+          "detection_type": "selection"
+        },
+        {
+          "id": "WIN-1003",
+          "title": "New User Added to a Privileged Local Group",
+          "description": "Detects a new member being added to a security-enabled local group (EventID 4732), which covers the common post-compromise persistence step of adding an attacker-controlled or newly created account to the local Administrators group.\n",
+          "level": "high",
+          "platform": "windows",
+          "logsource": {
+            "product": "windows",
+            "service": "security"
+          },
+          "mitre_attack": [
+            "T1098",
+            "T1136.001",
+            "T1078"
+          ],
+          "event_ids": [
+            "4732"
+          ],
+          "required_fields": [
+            "SubjectUserName",
+            "SubjectUserSid",
+            "TargetUserName",
+            "MemberName",
+            "MemberSid",
+            "GroupName"
+          ],
+          "audit_policy": {
+            "gpo_path": "Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration > Account Management > Audit Security Group Management\n",
+            "command": "auditpol /set /subcategory:\"Security Group Management\" /success:enable /failure:enable",
+            "notes": "Disabled by default on older baselines - explicitly enable it. Pair with WIN-1004 (4720, new account creation) to catch \"create account then add to admins\" attack chains end to end.\n"
+          },
+          "false_positives": [
+            "Legitimate IT/helpdesk group membership changes - correlate with your change ticket source"
+          ],
+          "detection_type": "selection"
+        }
+      ],
+      "actions": [
+        {
+          "id": "disable-account",
+          "label": "Disable the compromised account",
+          "stage_index": 3,
+          "phase": "containment"
+        },
+        {
+          "id": "revoke-sessions",
+          "label": "Revoke all active sessions/refresh tokens",
+          "stage_index": 3,
+          "phase": "containment"
+        }
+      ]
+    },
+    {
+      "id": "post-compromise",
+      "index": 4,
+      "name": "Post-Compromise Action",
+      "mitre": [
+        "T1114.003",
+        "T1098.002"
+      ],
+      "narrative": "Inside the mailbox, the attacker immediately creates a quiet external forwarding rule to keep receiving mail after the password is eventually changed.",
+      "blind_spot_note": "",
+      "rules": [
+        {
+          "id": "ID-9002",
+          "title": "Suspicious External Inbox Forwarding Rule Created",
+          "description": "Detects a newly created or modified mailbox rule that forwards or redirects mail to an external address. A top post-compromise action after a mailbox takeover - the attacker sets a quiet forwarding rule (often with no visible folder action) so they keep receiving copies of mail, password reset links, and MFA codes even after the victim changes their password.\n",
+          "level": "critical",
+          "platform": "identity",
+          "logsource": {
+            "category": "identity"
+          },
+          "mitre_attack": [
+            "T1114.003",
+            "T1098.002"
+          ],
+          "event_ids": [
+            "m365_audit_log"
+          ],
+          "required_fields": [
+            "mailbox",
+            "operation",
+            "forward_to",
+            "external_forward",
+            "actor"
+          ],
+          "audit_policy": {
+            "gpo_path": "Microsoft Purview (compliance center) Unified Audit Log must be enabled, plus the built-in Defender for Office 365 alert policy \"Creation of forwarding/redirect rule\" (or a custom alert on New-InboxRule/Set-InboxRule with a non-empty ForwardTo/RedirectTo).\n",
+            "command": "Set-OrganizationConfig -AuditDisabled $false ; Search-UnifiedAuditLog -RecordType ExchangeAdmin -Operations New-InboxRule,Set-InboxRule",
+            "notes": "Also block external forwarding at the tenant level by default (Exchange Online remote domain auto-forward setting) so this becomes a \"should never succeed\" event rather than routine self-service - the same posture as WEB rules that treat any hit as the finding itself.\n"
+          },
+          "false_positives": [
+            "A legitimate employee-configured forward to a personal address for convenience, or an approved business process (e.g. shared-mailbox triage) - confirm with the mailbox owner directly rather than assuming compromise, but still treat it as high priority until confirmed"
+          ],
+          "detection_type": "selection"
+        }
+      ],
+      "parallel_rules": [],
+      "actions": [
+        {
+          "id": "remove-rule",
+          "label": "Remove the malicious inbox forwarding rule",
+          "stage_index": 4,
+          "phase": "eradication"
+        },
+        {
+          "id": "notify-contacts",
+          "label": "Notify recipients of any lateral phishing sent from the mailbox",
+          "stage_index": 4,
+          "phase": "recovery"
+        },
+        {
+          "id": "forensics",
+          "label": "Open a full forensic review of the mailbox and OAuth app consents",
+          "stage_index": 4,
+          "phase": "recovery"
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "name": "Tariq Nguyen",
+      "mailbox": "tnguyen@corp.com",
+      "furthest_stage": -1,
+      "status": "safe",
+      "note": "Email gateway sandboxing detonated the link and blocked delivery outright.",
+      "proxy_evidence": {
+        "clicked": false,
+        "credentials_entered": false,
+        "events": []
+      }
+    },
+    {
+      "name": "Asha Smith",
+      "mailbox": "asmith@corp.com",
+      "furthest_stage": 0,
+      "status": "safe",
+      "note": "Reported the email via the Report Phishing button within 4 minutes of delivery.",
+      "proxy_evidence": {
+        "clicked": false,
+        "credentials_entered": false,
+        "events": []
+      }
+    },
+    {
+      "name": "Jamie Doe",
+      "mailbox": "jdoe@corp.com",
+      "furthest_stage": 0,
+      "status": "safe",
+      "note": "Read the subject line, recognized it as suspicious, and deleted it without clicking.",
+      "proxy_evidence": {
+        "clicked": false,
+        "credentials_entered": false,
+        "events": []
+      }
+    },
+    {
+      "name": "Kayla Garcia",
+      "mailbox": "kgarcia@corp.com",
+      "furthest_stage": 0,
+      "status": "unknown",
+      "note": "No corporate proxy/EDR telemetry for this user in the window - the email was opened on an unmanaged personal device. Treat as compromised until confirmed otherwise.",
+      "proxy_evidence": {
+        "clicked": false,
+        "credentials_entered": false,
+        "events": []
+      }
+    },
+    {
+      "name": "Ben Wong",
+      "mailbox": "bwong@corp.com",
+      "furthest_stage": 1,
+      "status": "at_risk",
+      "note": "Clicked the link, saw the fake login page, got suspicious and closed the tab without entering anything.",
+      "proxy_evidence": {
+        "clicked": true,
+        "credentials_entered": false,
+        "events": [
+          {
+            "timestamp": "2026-04-02T08:52:10+00:00",
+            "src_ip": "10.0.2.14",
+            "user": "bwong",
+            "method": "GET",
+            "domain": "corp-secure-verify.com",
+            "url": "https://corp-secure-verify.com/reset",
+            "category": "newly-registered-domain",
+            "action": "allowed",
+            "status_code": 200,
+            "bytes_out": 480,
+            "bytes_in": 9200
+          }
+        ]
+      }
+    },
+    {
+      "name": "Liam Jackson",
+      "mailbox": "ljackson@corp.com",
+      "furthest_stage": 2,
+      "status": "compromised",
+      "note": "Entered credentials on the fake page; no follow-on sign-in observed yet in this window - assume the credential is live and unused so far, reset immediately.",
+      "proxy_evidence": {
+        "clicked": true,
+        "credentials_entered": true,
+        "events": [
+          {
+            "timestamp": "2026-04-02T08:58:44+00:00",
+            "src_ip": "10.0.2.31",
+            "user": "ljackson",
+            "method": "GET",
+            "domain": "corp-secure-verify.com",
+            "url": "https://corp-secure-verify.com/reset",
+            "category": "newly-registered-domain",
+            "action": "allowed",
+            "status_code": 200,
+            "bytes_out": 480,
+            "bytes_in": 9200
+          },
+          {
+            "timestamp": "2026-04-02T08:58:57+00:00",
+            "src_ip": "10.0.2.31",
+            "user": "ljackson",
+            "method": "POST",
+            "domain": "corp-secure-verify.com",
+            "url": "https://corp-secure-verify.com/reset",
+            "category": "newly-registered-domain",
+            "action": "allowed",
+            "status_code": 200,
+            "bytes_out": 640,
+            "bytes_in": 3100
+          }
+        ]
+      }
+    },
+    {
+      "name": "Raj Patel",
+      "mailbox": "rpatel@corp.com",
+      "furthest_stage": 2,
+      "status": "compromised",
+      "note": "Entered credentials; the attacker's follow-on sign-in from Russia was blocked by an MFA challenge it couldn't satisfy. Credentials are burned but the account itself was not taken over.",
+      "proxy_evidence": {
+        "clicked": true,
+        "credentials_entered": true,
+        "events": [
+          {
+            "timestamp": "2026-04-02T09:01:05+00:00",
+            "src_ip": "10.0.2.47",
+            "user": "rpatel",
+            "method": "GET",
+            "domain": "corp-secure-verify.com",
+            "url": "https://corp-secure-verify.com/reset",
+            "category": "newly-registered-domain",
+            "action": "allowed",
+            "status_code": 200,
+            "bytes_out": 480,
+            "bytes_in": 9200
+          },
+          {
+            "timestamp": "2026-04-02T09:01:19+00:00",
+            "src_ip": "10.0.2.47",
+            "user": "rpatel",
+            "method": "POST",
+            "domain": "corp-secure-verify.com",
+            "url": "https://corp-secure-verify.com/reset",
+            "category": "newly-registered-domain",
+            "action": "allowed",
+            "status_code": 200,
+            "bytes_out": 655,
+            "bytes_in": 3100
+          }
+        ]
+      }
+    },
+    {
+      "name": "Maria Chen",
+      "mailbox": "mchen@corp.com",
+      "furthest_stage": 4,
+      "status": "compromised_active",
+      "note": "Entered credentials; the attacker signed in 14 minutes later from Nigeria and immediately added an external mailbox forwarding rule.",
+      "proxy_evidence": {
+        "clicked": true,
+        "credentials_entered": true,
+        "events": [
+          {
+            "timestamp": "2026-04-02T09:00:12+00:00",
+            "src_ip": "10.0.2.52",
+            "user": "mchen",
+            "method": "GET",
+            "domain": "corp-secure-verify.com",
+            "url": "https://corp-secure-verify.com/reset",
+            "category": "newly-registered-domain",
+            "action": "allowed",
+            "status_code": 200,
+            "bytes_out": 480,
+            "bytes_in": 9200
+          },
+          {
+            "timestamp": "2026-04-02T09:00:28+00:00",
+            "src_ip": "10.0.2.52",
+            "user": "mchen",
+            "method": "POST",
+            "domain": "corp-secure-verify.com",
+            "url": "https://corp-secure-verify.com/reset",
+            "category": "newly-registered-domain",
+            "action": "allowed",
+            "status_code": 200,
+            "bytes_out": 648,
+            "bytes_in": 3100
+          }
+        ]
+      }
+    }
+  ]
+}

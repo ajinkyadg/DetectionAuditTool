@@ -709,12 +709,35 @@ renderAll();
 """
 
 
-def export_phishing_incident_html(rules: List[Rule], output_path: str) -> None:
+def build_phishing_incident_payload(rules: List[Rule]) -> Dict[str, Any]:
+    """The incident as pure data - campaign, resolved stages, correlated users.
+
+    This is the seam every renderer sits behind: the self-contained HTML export
+    below injects it into its template, and SignalHunt syncs it as JSON and
+    renders its own React view from the same three keys. Presentation lives in
+    each consumer; the incident itself is defined once, here.
+    """
     rules_by_id = {r.id: r for r in rules}
     evidence = correlate_web_proxy_evidence()
     all_primary_rule_ids = {rid for s in STAGES for rid in s.rule_ids}
-    stages_data = [_stage_to_dict(s, rules_by_id, all_primary_rule_ids) for s in STAGES]
-    users_data = [_user_to_dict(u, evidence) for u in USERS]
+    return {
+        "campaign": CAMPAIGN,
+        "stages": [_stage_to_dict(s, rules_by_id, all_primary_rule_ids) for s in STAGES],
+        "users": [_user_to_dict(u, evidence) for u in USERS],
+    }
+
+
+def export_phishing_incident_json(rules: List[Rule], output_path: str) -> None:
+    payload = build_phishing_incident_payload(rules)
+    with open(output_path, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+
+
+def export_phishing_incident_html(rules: List[Rule], output_path: str) -> None:
+    payload = build_phishing_incident_payload(rules)
+    stages_data = payload["stages"]
+    users_data = payload["users"]
 
     html = (
         _TEMPLATE.replace("__CAMPAIGN_JSON__", json.dumps(CAMPAIGN))

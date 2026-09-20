@@ -125,6 +125,20 @@ dat simulate phishing --out phishing_incident.html
 open phishing_incident.html
 ```
 
+The same incident is also exportable as pure data, for another front end to
+render its own view of it:
+
+```bash
+dat simulate phishing --json incidents/phishing_account_takeover.json
+```
+
+`incidents/` is generated output, committed so consumers need only a file copy
+(no Python) to pick it up. [SignalHunt](https://signalhunt.dev) syncs that
+directory and renders it as a React walkthrough at
+`/incidents/phishing-account-takeover`, so the incident is defined once here -
+in `phishing_incident.py` - and drawn twice. Re-run the command above and
+commit the result whenever the incident or the rules it references change.
+
 Run the whole rule set against a real/sample log file:
 
 ```bash
