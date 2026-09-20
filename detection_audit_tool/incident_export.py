@@ -16,7 +16,21 @@ from .models import Rule
 from .phishing_incident import CAMPAIGN, STAGES, USERS, Stage, UserOutcome, correlate_web_proxy_evidence
 
 
-def _stage_to_dict(stage: Stage, rules_by_id: Dict[str, Rule]) -> Dict[str, Any]:
+def _stage_to_dict(stage: Stage, rules_by_id: Dict[str, Rule], all_primary_rule_ids: set) -> Dict[str, Any]:
+    own_ids = set(stage.rule_ids)
+    # Other catalogue rules that share this stage's MITRE technique but aren't already
+    # wired in here (as this stage's rule or another stage's) - i.e. independent detection
+    # coverage for the same attacker behavior from a different log source/platform.
+    parallel = sorted(
+        (
+            r
+            for r in rules_by_id.values()
+            if r.id not in own_ids
+            and r.id not in all_primary_rule_ids
+            and any(m in stage.mitre for m in r.mitre_attack)
+        ),
+        key=lambda r: r.id,
+    )
     return {
         "id": stage.id,
         "index": stage.index,
@@ -25,7 +39,10 @@ def _stage_to_dict(stage: Stage, rules_by_id: Dict[str, Rule]) -> Dict[str, Any]
         "narrative": stage.narrative,
         "blind_spot_note": stage.blind_spot_note,
         "rules": [rule_to_dict(rules_by_id[rid]) for rid in stage.rule_ids if rid in rules_by_id],
-        "actions": [{"id": a.id, "label": a.label, "stage_index": stage.index} for a in stage.actions],
+        "parallel_rules": [rule_to_dict(r) for r in parallel],
+        "actions": [
+            {"id": a.id, "label": a.label, "stage_index": stage.index, "phase": a.phase} for a in stage.actions
+        ],
     }
 
 
@@ -64,6 +81,14 @@ _TEMPLATE = """<!doctype html>
   .campaign-card .row div { color: var(--muted); }
   .campaign-card strong { color: var(--text); }
   main { padding: 0 24px 40px; max-width: 1200px; }
+  .view-toggle { display: flex; gap: 6px; margin: 0 0 14px; }
+  .view-btn { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 999px;
+              font-size: 12px; padding: 5px 12px; cursor: pointer; }
+  .view-btn.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .killchain-layout.mode-split { display: grid; grid-template-columns: minmax(300px, 38%) 1fr; gap: 20px; align-items: start; }
+  .killchain-layout.mode-visual .killchain { display: none; }
+  .killchain-layout.mode-text .diagram-panel { display: none; }
+  .killchain-layout.mode-split .killchain { margin-top: 0; }
   .diagram-panel { background: var(--bg); border-bottom: 1px solid var(--border); padding: 10px 0 12px;
                     position: sticky; top: 0; z-index: 20; }
   .diagram-panel.stuck { box-shadow: 0 6px 14px -8px rgba(0,0,0,.35); }
@@ -76,7 +101,7 @@ _TEMPLATE = """<!doctype html>
   .legend-item { display: flex; align-items: center; gap: 5px; }
   .swatch { width: 16px; height: 16px; border-radius: 5px; display: inline-flex; align-items: center;
             justify-content: center; font-size: 10px; line-height: 1; }
-  #diagram-container { min-height: 90px; max-height: 42vh; overflow: auto; }
+  #diagram-container { min-height: 90px; max-height: 60vh; overflow: auto; }
   .killchain { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
   .stage-card { background: var(--card); border: 1px solid var(--border); border-top: 3px solid var(--accent);
                 border-radius: 10px; padding: 0; width: 100%; }
@@ -108,6 +133,10 @@ _TEMPLATE = """<!doctype html>
   .rule-detail { font-size: 11px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
                  padding: 8px; margin-top: 4px; line-height: 1.5; }
   .action-row { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; margin-top: 3px; }
+  .phase-badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 9px;
+                 font-weight: 700; text-transform: uppercase; color: #fff; flex: none; margin-top: 1px; }
+  .phase-group { margin-bottom: 8px; }
+  .phase-group .plan-list { margin: 4px 0 0; }
   .action-row input { margin-top: 2px; accent-color: #0d9488; }
   .plan-and-kpi { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
   .panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
@@ -142,15 +171,22 @@ _TEMPLATE = """<!doctype html>
 </header>
 <div class="campaign-card" id="campaign-card"></div>
 <main>
-  <div class="diagram-panel" id="diagram-panel">
-    <div class="diagram-head">
-      <h2>Kill Chain - click a stage below for detail</h2>
-      <button class="legend-toggle" id="legend-toggle" type="button">Legend</button>
-    </div>
-    <div class="legend" id="legend"></div>
-    <div id="diagram-container"><div class="narrative">Rendering diagram...</div></div>
+  <div class="view-toggle">
+    <button class="view-btn" data-view="visual" type="button">Visual</button>
+    <button class="view-btn" data-view="text" type="button">Text</button>
+    <button class="view-btn" data-view="split" type="button">Side by Side</button>
   </div>
-  <div class="killchain" id="killchain"></div>
+  <div class="killchain-layout" id="killchain-layout">
+    <div class="diagram-panel" id="diagram-panel">
+      <div class="diagram-head">
+        <h2>Kill Chain</h2>
+        <button class="legend-toggle" id="legend-toggle" type="button">Legend</button>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div id="diagram-container"><div class="narrative">Rendering diagram...</div></div>
+    </div>
+    <div class="killchain" id="killchain"></div>
+  </div>
   <div class="caveat">
     Checking a response action assumes that control existed <em>before</em> this campaign started -
     it caps every user's outcome at that stage. It's a teaching simplification, not a claim about
@@ -159,9 +195,9 @@ _TEMPLATE = """<!doctype html>
   <div class="plan-and-kpi">
     <div class="panel">
       <h2>Your Incident Response Plan</h2>
-      <div class="section-title">Detection rules referenced</div>
+      <div class="section-title">Identification - rules referenced</div>
       <div id="plan-rules" class="plan-empty">None selected yet - click a rule chip on any stage.</div>
-      <div class="section-title">Response actions selected</div>
+      <div class="section-title">Response actions, by SANS phase</div>
       <div id="plan-actions" class="plan-empty">None selected yet - check a response action on any stage.</div>
     </div>
     <div class="panel">
@@ -196,12 +232,18 @@ const BLINDSPOT_ICON = '❓';
 const CAMPAIGN_ICON = '\U0001F3A3';
 const STATUS_ICONS = { safe: '✅', unknown: '❔', at_risk: '⚠', compromised: '\U0001F6A8', compromised_active: '\U0001F525' };
 
+/* SANS PICERL phases each response action maps to (Preparation is the only
+   non-response phase used here - it flags proactive controls, not reactions) */
+const PHASE_LABELS = { preparation: 'Preparation', containment: 'Containment', eradication: 'Eradication', recovery: 'Recovery' };
+const PHASE_COLORS = { preparation: '#64748b', containment: '#d97706', eradication: '#dc2626', recovery: '#16a34a' };
+const PHASE_ORDER = ['preparation', 'containment', 'eradication', 'recovery'];
+
 var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
 mermaid.initialize({
   startOnLoad: false,
   theme: prefersDark ? 'dark' : 'default',
   themeVariables: { fontSize: '16px' },
-  flowchart: { htmlLabels: true, nodeSpacing: 40, rankSpacing: 55 },
+  flowchart: { htmlLabels: true, nodeSpacing: 26, rankSpacing: 42 },
 });
 
 /* Mermaid ships each SVG at width="100%" with a max-width style, so it
@@ -288,18 +330,30 @@ function ruleDetailHtml(r) {
 
 var expandedStageId = STAGES[0].id;
 
+function ruleChipsHtml(rules, stageId, containerKind) {
+  return rules.map(function(r) {
+    return '<button class="rule-chip-btn" data-stage="' + stageId + '" data-rule="' + escapeHtml(r.id) +
+      '" data-container="' + containerKind + '-' + stageId + '">' + escapeHtml(r.id) + '</button>';
+  }).join('');
+}
+
 function stageCardHtml(stage, reachCount, cap) {
   var capped = cap !== Infinity && stage.index > cap;
   var rulesHtml = stage.rules.length
-    ? stage.rules.map(function(r) {
-        return '<button class="rule-chip-btn" data-stage="' + stage.id + '" data-rule="' + escapeHtml(r.id) + '">' + escapeHtml(r.id) + '</button>';
-      }).join('')
+    ? ruleChipsHtml(stage.rules, stage.id, 'rules')
     : '<div class="narrative">No internal detection rule covers this step.</div>';
+  var parallelSection = stage.parallel_rules.length
+    ? '<div class="section-title">Parallel detections (same MITRE technique, different log source)</div>' +
+      '<div id="parallel-' + stage.id + '">' + ruleChipsHtml(stage.parallel_rules, stage.id, 'parallel') + '</div>'
+    : '';
   var blindSpot = stage.blind_spot_note
     ? '<div class="blind-spot">Blind spot: ' + escapeHtml(stage.blind_spot_note) + '</div>' : '';
   var actionsHtml = stage.actions.map(function(a) {
     var checked = selectedActionIds.has(a.id) ? ' checked' : '';
-    return '<label class="action-row"><input type="checkbox" data-action="' + escapeHtml(a.id) + '"' + checked + '> ' + escapeHtml(a.label) + '</label>';
+    var phaseColor = PHASE_COLORS[a.phase] || PHASE_COLORS.containment;
+    return '<label class="action-row"><input type="checkbox" data-action="' + escapeHtml(a.id) + '"' + checked + '> ' +
+      '<span class="phase-badge" style="background:' + phaseColor + '">' + escapeHtml(PHASE_LABELS[a.phase] || a.phase) + '</span> ' +
+      escapeHtml(a.label) + '</label>';
   }).join('');
   var borderColor = STAGE_COLORS[stage.index] || '#2563eb';
   var icon = STAGE_ICONS[stage.index] || '';
@@ -321,9 +375,10 @@ function stageCardHtml(stage, reachCount, cap) {
         '<div>' + stage.mitre.map(function(m) { return '<span class="chip">' + escapeHtml(m) + '</span>'; }).join('') + '</div>' +
         '<div class="narrative">' + escapeHtml(stage.narrative) + '</div>' +
         blindSpot +
-        '<div class="section-title">Detection rule</div>' +
+        '<div class="section-title">Identification (detection rule)</div>' +
         '<div id="rules-' + stage.id + '">' + rulesHtml + '</div>' +
-        '<div class="section-title">Response actions</div>' +
+        parallelSection +
+        '<div class="section-title">Response actions (SANS phase tagged)</div>' +
         actionsHtml +
       '</div>' +
     '</details>';
@@ -352,14 +407,14 @@ function renderKillchain() {
     });
   });
 
-  killchainEl.querySelectorAll('.rule-chip-btn').forEach(function(btn) {
+  killchainEl.querySelectorAll('.rule-chip-btn[data-rule]').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      var stageId = btn.dataset.stage, ruleId = btn.dataset.rule;
-      var container = document.getElementById('rules-' + stageId);
+      var stageId = btn.dataset.stage, ruleId = btn.dataset.rule, containerId = btn.dataset.container;
+      var container = document.getElementById(containerId);
       var existing = container.querySelector('.rule-detail[data-for="' + ruleId + '"]');
       if (existing) { existing.remove(); return; }
       var stage = STAGES.find(function(s) { return s.id === stageId; });
-      var rule = stage.rules.find(function(r) { return r.id === ruleId; });
+      var rule = stage.rules.concat(stage.parallel_rules).find(function(r) { return r.id === ruleId; });
       var div = document.createElement('div');
       div.innerHTML = ruleDetailHtml(rule);
       div.firstChild.setAttribute('data-for', ruleId);
@@ -392,18 +447,25 @@ function renderPlan() {
   }
 
   var actionsEl = document.getElementById('plan-actions');
-  var chosen = [];
+  var byPhase = {};
   STAGES.forEach(function(stage) {
     stage.actions.forEach(function(a) {
-      if (selectedActionIds.has(a.id)) chosen.push(stage.name + ': ' + a.label);
+      if (!selectedActionIds.has(a.id)) return;
+      (byPhase[a.phase] = byPhase[a.phase] || []).push(stage.name + ': ' + a.label);
     });
   });
-  if (chosen.length === 0) {
+  var phasesUsed = PHASE_ORDER.filter(function(p) { return byPhase[p]; });
+  if (phasesUsed.length === 0) {
     actionsEl.className = 'plan-empty';
     actionsEl.textContent = 'None selected yet - check a response action on any stage.';
   } else {
     actionsEl.className = 'plan-list';
-    actionsEl.innerHTML = '<ul class="plan-list">' + chosen.map(function(c) { return '<li>' + escapeHtml(c) + '</li>'; }).join('') + '</ul>';
+    actionsEl.innerHTML = phasesUsed.map(function(phase) {
+      return '<div class="phase-group">' +
+        '<span class="phase-badge" style="background:' + PHASE_COLORS[phase] + '">' + PHASE_LABELS[phase] + '</span>' +
+        '<ul class="plan-list">' + byPhase[phase].map(function(c) { return '<li>' + escapeHtml(c) + '</li>'; }).join('') + '</ul>' +
+      '</div>';
+    }).join('');
   }
 }
 
@@ -496,6 +558,18 @@ window.addEventListener('scroll', function() {
   diagramPanelEl.classList.toggle('stuck', window.scrollY > 4);
 });
 
+/* ---------- View mode: visual only / text only / side by side ---------- */
+function setViewMode(mode) {
+  document.getElementById('killchain-layout').className = 'killchain-layout mode-' + mode;
+  document.querySelectorAll('.view-btn').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.view === mode);
+  });
+}
+document.querySelectorAll('.view-btn').forEach(function(b) {
+  b.addEventListener('click', function() { setViewMode(b.dataset.view); });
+});
+setViewMode('split');
+
 function sanitizeLabel(s, maxLen) {
   var cleaned = String(s).replace(/["()\[\]{}]/g, '');
   if (maxLen && cleaned.length > maxLen) cleaned = cleaned.slice(0, maxLen - 1) + '…';
@@ -503,7 +577,7 @@ function sanitizeLabel(s, maxLen) {
 }
 
 function buildDiagramDef(cap) {
-  var lines = ['flowchart LR', 'CAMP["' + CAMPAIGN_ICON + ' ' + sanitizeLabel(CAMPAIGN.name, 30) + '"]'];
+  var lines = ['flowchart TD', 'CAMP["' + CAMPAIGN_ICON + ' ' + sanitizeLabel(CAMPAIGN.name, 30) + '"]'];
   var prevNode = 'CAMP';
 
   STAGES.forEach(function(stage, i) {
@@ -583,7 +657,8 @@ renderAll();
 def export_phishing_incident_html(rules: List[Rule], output_path: str) -> None:
     rules_by_id = {r.id: r for r in rules}
     evidence = correlate_web_proxy_evidence()
-    stages_data = [_stage_to_dict(s, rules_by_id) for s in STAGES]
+    all_primary_rule_ids = {rid for s in STAGES for rid in s.rule_ids}
+    stages_data = [_stage_to_dict(s, rules_by_id, all_primary_rule_ids) for s in STAGES]
     users_data = [_user_to_dict(u, evidence) for u in USERS]
 
     html = (

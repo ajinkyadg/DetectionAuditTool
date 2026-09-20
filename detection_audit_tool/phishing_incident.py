@@ -36,6 +36,8 @@ CAMPAIGN: Dict[str, Any] = {
 class ResponseAction:
     id: str
     label: str
+    # SANS PICERL phase this action belongs to: preparation | containment | eradication | recovery
+    phase: str = "containment"
 
 
 @dataclass
@@ -71,8 +73,8 @@ STAGES: List[Stage] = [
         ),
         rule_ids=["EMAIL-8006"],
         actions=[
-            ResponseAction("block-sender", "Retroactively purge / block sender domain at the email gateway"),
-            ResponseAction("url-rewrite", "Enable time-of-click URL rewriting / sandboxing (Safe Links)"),
+            ResponseAction("block-sender", "Retroactively purge / block sender domain at the email gateway", phase="containment"),
+            ResponseAction("url-rewrite", "Enable time-of-click URL rewriting / sandboxing (Safe Links)", phase="preparation"),
         ],
     ),
     Stage(
@@ -86,8 +88,8 @@ STAGES: List[Stage] = [
         ),
         rule_ids=["WEBPROXY-9002"],
         actions=[
-            ResponseAction("block-domain-proxy", "Block the lookalike domain at the web proxy/firewall"),
-            ResponseAction("isolate-endpoint", "Isolate the endpoint via EDR network containment"),
+            ResponseAction("block-domain-proxy", "Block the lookalike domain at the web proxy/firewall", phase="containment"),
+            ResponseAction("isolate-endpoint", "Isolate the endpoint via EDR network containment", phase="containment"),
         ],
     ),
     Stage(
@@ -106,8 +108,8 @@ STAGES: List[Stage] = [
             "hard confirmation usually comes later, at the attacker sign-in stage."
         ),
         actions=[
-            ResponseAction("force-reset", "Force a password reset for every user who reached this stage"),
-            ResponseAction("mfa-reenroll", "Require MFA re-registration before the next sign-in"),
+            ResponseAction("force-reset", "Force a password reset for every user who reached this stage", phase="eradication"),
+            ResponseAction("mfa-reenroll", "Require MFA re-registration before the next sign-in", phase="eradication"),
         ],
     ),
     Stage(
@@ -121,8 +123,8 @@ STAGES: List[Stage] = [
         ),
         rule_ids=["ID-9001"],
         actions=[
-            ResponseAction("disable-account", "Disable the compromised account"),
-            ResponseAction("revoke-sessions", "Revoke all active sessions/refresh tokens"),
+            ResponseAction("disable-account", "Disable the compromised account", phase="containment"),
+            ResponseAction("revoke-sessions", "Revoke all active sessions/refresh tokens", phase="containment"),
         ],
     ),
     Stage(
@@ -136,9 +138,9 @@ STAGES: List[Stage] = [
         ),
         rule_ids=["ID-9002"],
         actions=[
-            ResponseAction("remove-rule", "Remove the malicious inbox forwarding rule"),
-            ResponseAction("notify-contacts", "Notify recipients of any lateral phishing sent from the mailbox"),
-            ResponseAction("forensics", "Open a full forensic review of the mailbox and OAuth app consents"),
+            ResponseAction("remove-rule", "Remove the malicious inbox forwarding rule", phase="eradication"),
+            ResponseAction("notify-contacts", "Notify recipients of any lateral phishing sent from the mailbox", phase="recovery"),
+            ResponseAction("forensics", "Open a full forensic review of the mailbox and OAuth app consents", phase="recovery"),
         ],
     ),
 ]
