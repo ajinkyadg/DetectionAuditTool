@@ -1,0 +1,43 @@
+id: SYS-4007
+title: Remote Monitoring & Management Tool Executed
+description: >
+  Detects execution of a legitimate remote access / RMM tool (AnyDesk,
+  TeamViewer, ScreenConnect, Atera). These are signed, legitimate products, so
+  they sail past application allow-listing and AV - which is exactly why
+  intrusions install them as a resilient backup channel alongside their real C2.
+  The finding is not that the tool is malicious; it is that it appeared on a
+  host where your organisation never deployed it.
+level: high
+mitre_attack:
+  - T1219
+logsource:
+  product: windows
+  service: sysmon
+event_ids:
+  - "1"
+detection_type: selection
+selection:
+  EventID: 1
+  Image|endswith:
+    - "AnyDesk.exe"
+    - "TeamViewer.exe"
+    - "ScreenConnect.ClientService.exe"
+    - "AteraAgent.exe"
+required_fields:
+  - Image
+  - ParentImage
+  - CommandLine
+  - User
+  - Hashes
+false_positives:
+  - Sanctioned remote support tooling - this rule is only meaningful with an allow-list of the products and hosts IT actually uses
+references:
+  - https://attack.mitre.org/techniques/T1219/
+audit_policy:
+  gpo_path: Sysmon configuration - ProcessCreate (Event ID 1) enabled, which baseline configs include by default.
+  command: sysmon64.exe -c sysmonconfig.xml
+  notes: >
+    Pair with WIN-1006 (7045): these tools install a service as well as running
+    a process, so the two rules corroborate each other. If your organisation
+    standardises on one RMM product, invert this rule - alert on every product
+    except that one.

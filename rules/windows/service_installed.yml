@@ -1,0 +1,43 @@
+id: WIN-1006
+title: Windows Service Installed
+description: >
+  Detects a new service being installed (EventID 7045). Service installation is
+  how a great many intrusions both persist and escalate: remote-execution
+  frameworks create a transient service to run a payload as SYSTEM, and remote
+  access tools install a permanent auto-start service to survive reboots. The
+  event is low-volume on servers, which makes it unusually cheap to alert on.
+level: high
+mitre_attack:
+  - T1543.003
+  - T1569.002
+logsource:
+  product: windows
+  service: system
+event_ids:
+  - "7045"
+detection_type: selection
+selection:
+  EventID: 7045
+required_fields:
+  - ServiceName
+  - ImagePath
+  - ServiceType
+  - StartType
+  - AccountName
+false_positives:
+  - Software installation and patching, which legitimately creates services - correlate with your change window
+  - Management agents (backup, EDR, monitoring) deploying to new hosts
+references:
+  - https://attack.mitre.org/techniques/T1543/003/
+  - https://attack.mitre.org/techniques/T1569/002/
+audit_policy:
+  gpo_path: >
+    Logged to the System event log by the Service Control Manager - no audit
+    policy required, but the System log's default size rotates quickly on busy
+    hosts and should be forwarded.
+  command: wevtutil sl System /ms:134217728
+  notes: >
+    ImagePath is the field that matters: a service pointing at a path under
+    %TEMP%, a raw cmd.exe /c, or a named pipe is far more interesting than the
+    service name, which attackers randomise. Alerting on every 7045 is viable
+    on servers but noisy on workstations - scope by ImagePath first.

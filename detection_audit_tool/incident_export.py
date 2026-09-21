@@ -1,8 +1,13 @@
-"""Export the phishing incident as a single self-contained, interactive HTML
-page: a clickable kill chain where you build a detection + response plan
-stage by stage and watch the user-triage table recompute live.
+"""Export an incident as a single self-contained, interactive HTML page: a
+clickable kill chain where you build a detection + response plan stage by stage
+and watch the entity-triage table recompute live.
 
 No server - open the file directly in a browser.
+
+Nothing here knows which incident it is rendering. Everything phishing-specific
+(status vocabulary, the entity column header, stage icons) arrives in the
+payload, so a ransomware intrusion with six stages and a different status ladder
+renders through the same template.
 """
 
 from __future__ import annotations
@@ -11,9 +16,9 @@ import json
 from dataclasses import asdict
 from typing import Any, Dict, List
 
+from .evidence import correlate
 from .html_export import rule_to_dict
-from .models import Rule
-from .phishing_incident import CAMPAIGN, STAGES, USERS, Stage, UserOutcome, correlate_web_proxy_evidence
+from .models import AffectedEntity, Incident, Rule, Stage
 
 
 def _stage_to_dict(stage: Stage, rules_by_id: Dict[str, Rule], all_primary_rule_ids: set) -> Dict[str, Any]:
@@ -35,6 +40,7 @@ def _stage_to_dict(stage: Stage, rules_by_id: Dict[str, Rule], all_primary_rule_
         "id": stage.id,
         "index": stage.index,
         "name": stage.name,
+        "icon": stage.icon,
         "mitre": stage.mitre,
         "narrative": stage.narrative,
         "blind_spot_note": stage.blind_spot_note,
@@ -46,9 +52,9 @@ def _stage_to_dict(stage: Stage, rules_by_id: Dict[str, Rule], all_primary_rule_
     }
 
 
-def _user_to_dict(user: UserOutcome, evidence: Dict[str, Any]) -> Dict[str, Any]:
-    data = asdict(user)
-    data["proxy_evidence"] = evidence.get(user.mailbox, {"clicked": False, "credentials_entered": False, "events": []})
+def _entity_to_dict(entity: AffectedEntity, evidence: Dict[str, Any]) -> Dict[str, Any]:
+    data = asdict(entity)
+    data["evidence"] = evidence.get(entity.identifier, {"events": []})
     return data
 
 
@@ -57,7 +63,7 @@ _TEMPLATE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Phishing Incident Walkthrough</title>
+<title>__INCIDENT_TITLE__</title>
 <style>
   :root {
     color-scheme: light dark;
@@ -164,27 +170,29 @@ _TEMPLATE = """<!doctype html>
   .kpi { flex: 1; min-width: 100px; text-align: center; }
   .kpi .num { font-size: 22px; font-weight: 700; }
   .kpi .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; }
-  .kpi.safe .num { color: var(--safe); }
-  .kpi.unknown .num { color: var(--unknown); }
-  .kpi.at_risk .num { color: var(--atrisk); }
-  .kpi.compromised .num, .kpi.compromised_active .num { color: var(--compromised); }
+  .kpi.tone-good .num { color: var(--safe); }
+  .kpi.tone-neutral .num { color: var(--unknown); }
+  .kpi.tone-warn .num { color: var(--atrisk); }
+  .kpi.tone-bad .num { color: var(--compromised); }
+  .kpi.tone-critical .num { color: var(--active); }
   table.triage { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--card);
                  border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
   table.triage th, table.triage td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); }
   .status-badge { font-size: 10px; text-transform: uppercase; font-weight: 700; padding: 3px 8px; border-radius: 4px; color: #fff; }
-  .status-safe { background: var(--safe); }
-  .status-unknown { background: var(--unknown); }
-  .status-at_risk { background: var(--atrisk); }
-  .status-compromised { background: var(--compromised); }
-  .status-compromised_active { background: var(--active); }
+  .tone-good { background: var(--safe); }
+  .tone-neutral { background: var(--unknown); }
+  .tone-warn { background: var(--atrisk); }
+  .tone-bad { background: var(--compromised); }
+  .tone-critical { background: var(--active); }
   .arrow-cell { color: var(--muted); font-size: 12px; }
   .caveat { font-size: 11px; color: var(--muted); margin: 6px 0 18px; max-width: 900px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Phishing Incident Walkthrough</h1>
+  <h1 id="incident-title"></h1>
   <div class="sub">A worked kill chain, correlated from real log evidence. Expand a stage for its detection rule and response actions.</div>
+  <div class="sub" id="incident-source"></div>
 </header>
 <div class="campaign-card" id="campaign-card"></div>
 <main>
@@ -231,26 +239,36 @@ _TEMPLATE = """<!doctype html>
   <div class="panel">
     <h2>User Triage</h2>
     <table class="triage">
-      <thead><tr><th>User</th><th>Mailbox</th><th>Furthest Stage</th><th>Original</th><th></th><th>Revised</th><th>Notes</th><th>Evidence</th></tr></thead>
+      <thead><tr><th>Name</th><th id="entity-col"></th><th>Furthest Stage</th><th>Original</th><th></th><th>Revised</th><th>Notes</th><th>Evidence</th></tr></thead>
       <tbody id="triage-rows"></tbody>
     </table>
   </div>
 </main>
 <script>
-const CAMPAIGN = __CAMPAIGN_JSON__;
-const STAGES = __STAGES_JSON__;
-const USERS = __USERS_JSON__;
+const INCIDENT = __INCIDENT_JSON__;
+const SCENARIO = INCIDENT.scenario || {};
+const STAGES = INCIDENT.stages;
+const ENTITIES = INCIDENT.entities;
+const STATUS_MODEL = INCIDENT.status_model;
+const ENTITY_LABEL = INCIDENT.entity_label || 'Entity';
 
-const STAGE_COLORS = ['#2563eb', '#d97706', '#ea580c', '#dc2626', '#7c1d1d'];
-const STAGE_ICONS = ['\U0001F4E7', '\U0001F5B1', '\U0001F511', '\U0001F575', '\U0001F4E4'];
+/* Escalation ramp - long enough for any incident we'd model; stages index into it. */
+const STAGE_COLORS = ['#2563eb', '#0891b2', '#d97706', '#ea580c', '#dc2626', '#9f1239', '#7c1d1d', '#581c87'];
 const RULE_COLOR = '#7c3aed';
 const ACTION_COLOR = '#0d9488';
 const BLINDSPOT_COLOR = '#6b7280';
 const RULE_ICON = '\U0001F50D';
 const ACTION_ICON = '\U0001F6E1';
 const BLINDSPOT_ICON = '❓';
-const CAMPAIGN_ICON = '\U0001F3A3';
-const STATUS_ICONS = { safe: '✅', unknown: '❔', at_risk: '⚠', compromised: '\U0001F6A8', compromised_active: '\U0001F525' };
+const INCIDENT_ICON = INCIDENT.icon || '\U0001F6A8';
+/* Status vocabulary differs per incident, so icons key off the semantic tone. */
+const TONE_ICONS = { good: '✅', neutral: '❔', warn: '⚠', bad: '\U0001F6A8', critical: '\U0001F525' };
+const STATUS_BY_ID = {};
+STATUS_MODEL.forEach(function(s) { STATUS_BY_ID[s.id] = s; });
+function statusLabel(id) { return (STATUS_BY_ID[id] || {}).label || id; }
+function statusTone(id) { return (STATUS_BY_ID[id] || {}).tone || 'neutral'; }
+function statusIcon(id) { return TONE_ICONS[statusTone(id)] || ''; }
+function stageIcon(stage) { return stage.icon || ''; }
 
 /* SANS PICERL phases each response action maps to (Preparation is the only
    non-response phase used here - it flags proactive controls, not reactions) */
@@ -301,14 +319,28 @@ function escapeHtml(s) {
 }
 
 /* ---------- Campaign summary ---------- */
+function titleCase(key) {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+}
+
+document.getElementById('incident-title').textContent = INCIDENT.title;
+document.getElementById('entity-col').textContent = ENTITY_LABEL;
+if (INCIDENT.source && INCIDENT.source.url) {
+  document.getElementById('incident-source').innerHTML =
+    'Modelled on public research: <a href="' + escapeHtml(INCIDENT.source.url) + '">' +
+    escapeHtml(INCIDENT.source.name || INCIDENT.source.url) + '</a>';
+}
+
+/* The scenario block is free-form per incident, so render whatever keys it has
+   rather than naming phishing's fields. `name` is the card's heading. */
 document.getElementById('campaign-card').innerHTML =
-  '<strong>' + escapeHtml(CAMPAIGN.name) + '</strong>' +
+  '<strong>' + escapeHtml(SCENARIO.name || INCIDENT.title) + '</strong>' +
   '<div class="row">' +
-    '<div>From: <strong>' + escapeHtml(CAMPAIGN.sender_display_name) + ' &lt;' + escapeHtml(CAMPAIGN.sender_address) + '&gt;</strong></div>' +
-    '<div>Subject: <strong>' + escapeHtml(CAMPAIGN.subject) + '</strong></div>' +
-    '<div>Lookalike domain: <strong>' + escapeHtml(CAMPAIGN.lookalike_domain) + '</strong></div>' +
-    '<div>Sent: <strong>' + escapeHtml(CAMPAIGN.sent_at) + '</strong></div>' +
-    '<div>Recipients: <strong>' + escapeHtml(String(CAMPAIGN.recipients)) + '</strong></div>' +
+    Object.keys(SCENARIO).filter(function(k) { return k !== 'name'; }).map(function(k) {
+      var v = SCENARIO[k];
+      if (Array.isArray(v)) v = v.join(', ');
+      return '<div>' + escapeHtml(titleCase(k)) + ': <strong>' + escapeHtml(String(v)) + '</strong></div>';
+    }).join('') +
   '</div>';
 
 /* ---------- State ---------- */
@@ -325,12 +357,18 @@ function containmentCap() {
   return cap;
 }
 
+/* Walks the incident's own status ladder. A sticky status (no telemetry for
+   this entity) is never cleared by a containment cap. */
 function deriveStatus(furthestStage, originalStatus) {
-  if (originalStatus === 'unknown') return 'unknown';
-  if (furthestStage <= 0) return 'safe';
-  if (furthestStage === 1) return 'at_risk';
-  if (furthestStage < 4) return 'compromised';
-  return 'compromised_active';
+  var current = STATUS_BY_ID[originalStatus];
+  if (current && current.sticky) return current.id;
+  for (var i = 0; i < STATUS_MODEL.length; i++) {
+    var level = STATUS_MODEL[i];
+    if (level.max_stage !== null && level.max_stage !== undefined && furthestStage <= level.max_stage) {
+      return level.id;
+    }
+  }
+  return STATUS_MODEL[STATUS_MODEL.length - 1].id;
 }
 
 function revisedStage(user, cap) {
@@ -451,7 +489,7 @@ function wireStageDetailEvents(containerEl) {
 
 function stageCardHtml(stage, reachCount) {
   var borderColor = STAGE_COLORS[stage.index] || '#2563eb';
-  var icon = STAGE_ICONS[stage.index] || '';
+  var icon = stageIcon(stage);
   var isOpen = stage.id === expandedStageId;
   var work = stageNeedsWork(stage);
   return '' +
@@ -462,7 +500,7 @@ function stageCardHtml(stage, reachCount) {
           '<span class="stage-icon-circle" style="background:' + borderColor + '">' + icon + '</span>' +
           '<div class="stage-summary-text">' +
             '<h3><span class="stage-idx" style="background:' + borderColor + '">' + stage.index + '</span>' + escapeHtml(stage.name) + '</h3>' +
-            '<div class="reach-inline">' + reachCount + ' / ' + USERS.length + ' users reached this stage</div>' +
+            '<div class="reach-inline">' + reachCount + ' / ' + ENTITIES.length + ' reached this stage</div>' +
           '</div>' +
           needsWorkBadgeHtml(work) +
           '<span class="chevron">&#9656;</span>' +
@@ -476,7 +514,7 @@ function renderKillchain() {
   var cap = containmentCap();
   var html = [];
   STAGES.forEach(function(stage) {
-    var reachCount = USERS.filter(function(u) { return revisedStage(u, cap) >= stage.index; }).length;
+    var reachCount = ENTITIES.filter(function(e) { return revisedStage(e, cap) >= stage.index; }).length;
     html.push(stageCardHtml(stage, reachCount));
   });
   var killchainEl = document.getElementById('killchain');
@@ -501,7 +539,7 @@ function renderKillchain() {
 /* ---------- Mind map: expand/collapse per node, vertical timeline ---------- */
 function mindmapNodeHtml(stage, reachCount) {
   var color = STAGE_COLORS[stage.index] || '#2563eb';
-  var icon = STAGE_ICONS[stage.index] || '';
+  var icon = stageIcon(stage);
   var isOpen = expandedMindmapIds.has(stage.id);
   var work = stageNeedsWork(stage);
   return '' +
@@ -511,7 +549,7 @@ function mindmapNodeHtml(stage, reachCount) {
         '<div class="mm-node-head">' +
           '<span class="mm-icon" style="background:' + color + '">' + icon + '</span>' +
           '<span class="mm-node-title">' + stage.index + '. ' + escapeHtml(stage.name) + '</span>' +
-          '<span class="mm-reach">' + reachCount + '/' + USERS.length + '</span>' +
+          '<span class="mm-reach">' + reachCount + '/' + ENTITIES.length + '</span>' +
           needsWorkBadgeHtml(work) +
           '<span class="mm-caret">&#9656;</span>' +
         '</div>' +
@@ -522,9 +560,9 @@ function mindmapNodeHtml(stage, reachCount) {
 
 function renderMindmap() {
   var cap = containmentCap();
-  var html = ['<div class="mm-tree">', '<div class="mm-root">' + CAMPAIGN_ICON + ' ' + escapeHtml(CAMPAIGN.name) + '</div>'];
+  var html = ['<div class="mm-tree">', '<div class="mm-root">' + INCIDENT_ICON + ' ' + escapeHtml(SCENARIO.name || INCIDENT.title) + '</div>'];
   STAGES.forEach(function(stage) {
-    var reachCount = USERS.filter(function(u) { return revisedStage(u, cap) >= stage.index; }).length;
+    var reachCount = ENTITIES.filter(function(e) { return revisedStage(e, cap) >= stage.index; }).length;
     html.push('<div class="mm-connector"></div>');
     html.push(mindmapNodeHtml(stage, reachCount));
   });
@@ -579,22 +617,21 @@ function renderPlan() {
 }
 
 /* ---------- KPI + triage table ---------- */
-var STATUS_LABELS = { safe: 'Safe', unknown: 'Unknown', at_risk: 'At Risk', compromised: 'Compromised', compromised_active: 'Compromised (Active)' };
-var STATUS_ORDER = ['safe', 'unknown', 'at_risk', 'compromised', 'compromised_active'];
+var STATUS_ORDER = STATUS_MODEL.map(function(s) { return s.id; });
 
 function kpiHtml(statuses) {
   var counts = {};
   STATUS_ORDER.forEach(function(s) { counts[s] = 0; });
   statuses.forEach(function(s) { counts[s]++; });
   return STATUS_ORDER.map(function(s) {
-    return '<div class="kpi ' + s + '"><div class="num">' + STATUS_ICONS[s] + ' ' + counts[s] + '</div><div class="lbl">' + STATUS_LABELS[s] + '</div></div>';
+    return '<div class="kpi tone-' + statusTone(s) + '"><div class="num">' + statusIcon(s) + ' ' + counts[s] + '</div><div class="lbl">' + statusLabel(s) + '</div></div>';
   }).join('');
 }
 
 function renderKpiAndTriage() {
   var cap = containmentCap();
-  var beforeStatuses = USERS.map(function(u) { return u.status; });
-  var afterStatuses = USERS.map(function(u) { return deriveStatus(revisedStage(u, cap), u.status); });
+  var beforeStatuses = ENTITIES.map(function(e) { return e.status; });
+  var afterStatuses = ENTITIES.map(function(e) { return deriveStatus(revisedStage(e, cap), e.status); });
   document.getElementById('kpi-before').innerHTML = kpiHtml(beforeStatuses);
   document.getElementById('kpi-after').innerHTML = kpiHtml(afterStatuses);
 
@@ -602,33 +639,35 @@ function renderKpiAndTriage() {
   STAGES.forEach(function(s) { stageNameByIndex[s.index] = s.name; });
   stageNameByIndex[-1] = 'Never delivered';
 
-  var rows = USERS.map(function(u, i) {
+  var rows = ENTITIES.map(function(u, i) {
     var revised = revisedStage(u, cap);
     var revisedStatus = afterStatuses[i];
     var changed = revisedStatus !== u.status;
-    var events = (u.proxy_evidence && u.proxy_evidence.events) || [];
+    var evidence = u.evidence || {};
+    var events = evidence.events || [];
     var evidenceCell = events.length
-      ? '<button class="rule-chip-btn" data-evidence="' + escapeHtml(u.mailbox) + '">' + events.length + ' log(s)</button>'
+      ? '<button class="rule-chip-btn" data-evidence="' + escapeHtml(u.identifier) + '">' + events.length + ' log(s)</button>'
       : '<span class="narrative">none</span>';
     var mainRow = '<tr>' +
       '<td>' + escapeHtml(u.name) + '</td>' +
-      '<td>' + escapeHtml(u.mailbox) + '</td>' +
+      '<td>' + escapeHtml(u.identifier) + '</td>' +
       '<td>' + escapeHtml(stageNameByIndex[revised] || String(revised)) + '</td>' +
-      '<td><span class="status-badge status-' + u.status + '">' + STATUS_ICONS[u.status] + ' ' + STATUS_LABELS[u.status] + '</span></td>' +
+      '<td><span class="status-badge tone-' + statusTone(u.status) + '">' + statusIcon(u.status) + ' ' + statusLabel(u.status) + '</span></td>' +
       '<td class="arrow-cell">' + (changed ? '&rarr;' : '') + '</td>' +
-      '<td><span class="status-badge status-' + revisedStatus + '">' + STATUS_ICONS[revisedStatus] + ' ' + STATUS_LABELS[revisedStatus] + '</span></td>' +
+      '<td><span class="status-badge tone-' + statusTone(revisedStatus) + '">' + statusIcon(revisedStatus) + ' ' + statusLabel(revisedStatus) + '</span></td>' +
       '<td>' + escapeHtml(u.note) + '</td>' +
       '<td>' + evidenceCell + '</td>' +
     '</tr>';
+    /* The correlator already knows what its log source means, so it supplies the
+       per-event headline and summary; this just lays them out. */
     var evidenceRow = events.length
-      ? '<tr class="evidence-row" id="evidence-' + escapeHtml(u.mailbox) + '" hidden><td colspan="8">' +
+      ? '<tr class="evidence-row" id="evidence-' + escapeHtml(u.identifier) + '" hidden><td colspan="8">' +
           '<div class="rule-detail">' +
-            '<div><strong>web_proxy</strong> hits against ' + escapeHtml(CAMPAIGN.lookalike_domain) + ' for user "' + escapeHtml(u.mailbox.split('@')[0]) + '":</div>' +
+            '<div><strong>' + escapeHtml(evidence.caption || 'Correlated evidence') + '</strong> for ' + escapeHtml(u.identifier) + ':</div>' +
             events.map(function(e) {
               return '<div style="margin-top:4px;"><code>' + escapeHtml(e.timestamp) + '</code> ' +
-                escapeHtml(e.method) + ' ' + escapeHtml(e.url) +
-                ' (bytes_out=' + escapeHtml(String(e.bytes_out)) + ')' +
-                (e.method === 'POST' ? ' &larr; form submission (WEBPROXY-9002 + payload size = credentials entered)' : ' &larr; page load only') +
+                escapeHtml(e.headline) +
+                (e.summary ? ' &larr; ' + escapeHtml(e.summary) : '') +
                 '</div>';
             }).join('') +
           '</div>' +
@@ -649,7 +688,7 @@ function renderKpiAndTriage() {
 /* ---------- Kill chain diagram (Mermaid) ---------- */
 function renderLegend() {
   var items = STAGES.map(function(s, i) {
-    return '<span class="legend-item"><span class="swatch" style="background:' + STAGE_COLORS[i] + '">' + STAGE_ICONS[i] + '</span>' + escapeHtml(s.name) + '</span>';
+    return '<span class="legend-item"><span class="swatch" style="background:' + STAGE_COLORS[i] + '">' + stageIcon(s) + '</span>' + escapeHtml(s.name) + '</span>';
   });
   items.push('<span class="legend-item"><span class="swatch" style="background:' + RULE_COLOR + '">' + RULE_ICON + '</span>Detection rule</span>');
   items.push('<span class="legend-item"><span class="swatch" style="background:' + ACTION_COLOR + '">' + ACTION_ICON + '</span>Response action</span>');
@@ -709,40 +748,47 @@ renderAll();
 """
 
 
-def build_phishing_incident_payload(rules: List[Rule]) -> Dict[str, Any]:
-    """The incident as pure data - campaign, resolved stages, correlated users.
+def build_incident_payload(incident: Incident, rules: List[Rule], base_dir: str = ".") -> Dict[str, Any]:
+    """The incident as pure data - scenario, resolved stages, correlated entities.
 
     This is the seam every renderer sits behind: the self-contained HTML export
     below injects it into its template, and SignalHunt syncs it as JSON and
-    renders its own React view from the same three keys. Presentation lives in
-    each consumer; the incident itself is defined once, here.
+    renders its own React view from the same keys. Presentation lives in each
+    consumer; the incident itself is defined once, in its YAML.
     """
     rules_by_id = {r.id: r for r in rules}
-    evidence = correlate_web_proxy_evidence()
-    all_primary_rule_ids = {rid for s in STAGES for rid in s.rule_ids}
+    evidence = correlate(incident, base_dir)
+    all_primary_rule_ids = {rid for s in incident.stages for rid in s.rule_ids}
     return {
-        "campaign": CAMPAIGN,
-        "stages": [_stage_to_dict(s, rules_by_id, all_primary_rule_ids) for s in STAGES],
-        "users": [_user_to_dict(u, evidence) for u in USERS],
+        "id": incident.id,
+        "slug": incident.slug,
+        "title": incident.title,
+        "summary": incident.summary,
+        "icon": incident.icon,
+        "entity_label": incident.entity_label,
+        "source": incident.source,
+        "scenario": incident.scenario,
+        "status_model": [asdict(level) for level in incident.status_model],
+        "stages": [_stage_to_dict(s, rules_by_id, all_primary_rule_ids) for s in incident.stages],
+        "entities": [_entity_to_dict(e, evidence) for e in incident.entities],
     }
 
 
-def export_phishing_incident_json(rules: List[Rule], output_path: str) -> None:
-    payload = build_phishing_incident_payload(rules)
+def export_incident_json(
+    incident: Incident, rules: List[Rule], output_path: str, base_dir: str = "."
+) -> None:
+    payload = build_incident_payload(incident, rules, base_dir)
     with open(output_path, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, indent=2, ensure_ascii=False)
         fh.write("\n")
 
 
-def export_phishing_incident_html(rules: List[Rule], output_path: str) -> None:
-    payload = build_phishing_incident_payload(rules)
-    stages_data = payload["stages"]
-    users_data = payload["users"]
-
-    html = (
-        _TEMPLATE.replace("__CAMPAIGN_JSON__", json.dumps(CAMPAIGN))
-        .replace("__STAGES_JSON__", json.dumps(stages_data))
-        .replace("__USERS_JSON__", json.dumps(users_data))
+def export_incident_html(
+    incident: Incident, rules: List[Rule], output_path: str, base_dir: str = "."
+) -> None:
+    payload = build_incident_payload(incident, rules, base_dir)
+    html = _TEMPLATE.replace("__INCIDENT_JSON__", json.dumps(payload)).replace(
+        "__INCIDENT_TITLE__", incident.title
     )
     with open(output_path, "w", encoding="utf-8") as fh:
         fh.write(html)

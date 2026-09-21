@@ -59,5 +59,24 @@
     "TargetObject": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Spooler\\Start",
     "Details": "2",
     "User": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "TimeCreated": "2026-02-10T03:20:18+00:00",
+    "EventID": 10,
+    "SourceImage": "C:\\Windows\\Temp\\uFSyLszKsuR.exe",
+    "TargetImage": "C:\\Windows\\System32\\lsass.exe",
+    "GrantedAccess": "0x1010",
+    "CallTrace": "UNKNOWN(00007FFD3A1C0000)|UNKNOWN(00007FFD3A1C4521)",
+    "User": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "TimeCreated": "2026-02-10T02:31:50+00:00",
+    "EventID": 1,
+    "Image": "C:\\Program Files (x86)\\AnyDesk\\AnyDesk.exe",
+    "ParentImage": "C:\\Windows\\System32\\services.exe",
+    "CommandLine": "\"AnyDesk.exe\" --service",
+    "ParentCommandLine": "C:\\Windows\\system32\\services.exe",
+    "User": "NT AUTHORITY\\SYSTEM",
+    "Hashes": "SHA256=9E7A1B4C2D3E5F60718293A4B5C6D7E8F90A1B2C3D4E5F60718293A4B5C6D7E8"
   }
 ]

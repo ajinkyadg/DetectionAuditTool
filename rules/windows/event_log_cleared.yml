@@ -1,0 +1,42 @@
+id: WIN-1007
+title: Event Log Cleared
+description: >
+  Detects the Security log being cleared (EventID 1102) or any other log being
+  cleared (System EventID 104). Clearing logs is rarely anything but an attempt
+  to destroy evidence, and both events are emitted by the act of clearing
+  itself - so the one record an attacker most wants gone is the one they cannot
+  remove by clearing.
+level: critical
+mitre_attack:
+  - T1070.001
+logsource:
+  product: windows
+  service: security
+event_ids:
+  - "1102"
+  - "104"
+detection_type: selection
+selection:
+  EventID:
+    - 1102
+    - 104
+required_fields:
+  - EventID
+  - SubjectUserName
+  - SubjectDomainName
+  - Computer
+false_positives:
+  - Deliberate log rotation or clearing during decommissioning or forensic imaging
+  - Some system-rebuild tooling clears logs as a final step
+references:
+  - https://attack.mitre.org/techniques/T1070/001/
+audit_policy:
+  gpo_path: >
+    1102 is written to the Security log unconditionally when it is cleared; 104
+    lands in the System log. Neither needs an audit subcategory enabled.
+  command: auditpol /set /subcategory:"Audit Policy Change" /success:enable /failure:enable
+  notes: >
+    This rule is only as good as your log forwarding: if events are shipped off
+    the host in real time, clearing the local log is futile and 1102 becomes a
+    high-signal alert. If they aren't, the alert arrives having already lost the
+    context needed to investigate it.

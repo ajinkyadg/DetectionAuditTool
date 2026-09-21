@@ -1,0 +1,1119 @@
+{
+  "id": "activemq_lockbit",
+  "slug": "activemq_lockbit",
+  "title": "Exposed Service to Domain-Wide Ransomware",
+  "summary": "An internet-facing message broker is exploited, and 19 days later the ransomware lands. A simulation of where that chain could have been broken.",
+  "icon": "🧨",
+  "entity_label": "Host",
+  "source": {
+    "name": "The DFIR Report - Apache ActiveMQ Exploit Leads to LockBit Ransomware",
+    "url": "https://thedfirreport.com/2026/02/23/apache-activemq-exploit-leads-to-lockbit-ransomware/"
+  },
+  "scenario": {
+    "name": "Exposed Broker to Domain-Wide Ransomware",
+    "initial_access": "CVE-2023-46604 on an internet-facing Apache ActiveMQ broker",
+    "first_seen": "2026-02-08T22:41:00+00:00",
+    "encrypted_at": "2026-02-27T21:44:00+00:00",
+    "dwell_time": "19 days from first exploit to encryption",
+    "final_deployment_window": "under 90 minutes",
+    "hosts_in_scope": 8,
+    "ransomware_binaries": [
+      "LB3.exe",
+      "LB3_pass.exe"
+    ]
+  },
+  "status_model": [
+    {
+      "id": "safe",
+      "label": "Safe",
+      "tone": "good",
+      "max_stage": -1,
+      "sticky": false
+    },
+    {
+      "id": "unknown",
+      "label": "Unknown",
+      "tone": "neutral",
+      "max_stage": null,
+      "sticky": true
+    },
+    {
+      "id": "at_risk",
+      "label": "At Risk",
+      "tone": "warn",
+      "max_stage": 1,
+      "sticky": false
+    },
+    {
+      "id": "compromised",
+      "label": "Compromised",
+      "tone": "bad",
+      "max_stage": 4,
+      "sticky": false
+    },
+    {
+      "id": "encrypted",
+      "label": "Encrypted",
+      "tone": "critical",
+      "max_stage": null,
+      "sticky": false
+    }
+  ],
+  "stages": [
+    {
+      "id": "exploit",
+      "index": 0,
+      "name": "Internet-Facing Exploit",
+      "icon": "💥",
+      "mitre": [
+        "T1190"
+      ],
+      "narrative": "A deserialisation flaw in an internet-facing message broker is exploited to run code as the service account. The same broker is hit twice, 18 days apart - the first visit establishes access, the second one uses it.",
+      "blind_spot_note": "The exploit rides the broker's own binary wire protocol, not HTTP - so no WAF, reverse proxy or web server rule in the catalogue can see it. Nothing is wrong with those rules; they are simply pointed at a protocol this attack never touches. The realistic controls here are inventory and patch latency, not detection: an unpatched broker reachable from the internet is a finding long before it is an alert.",
+      "rules": [],
+      "parallel_rules": [
+        {
+          "id": "RP-7001",
+          "title": "TLS SNI and HTTP Host Header Mismatch (Domain Fronting / Host Injection)",
+          "description": "Detects a request where the hostname presented at the TLS handshake (SNI) does not match the HTTP Host header the client actually requests once the connection is established. Legitimately this can only happen for a small, known set of multi-tenant setups - anywhere else it's either domain fronting (routing traffic through a trusted CDN/reverse proxy's IP and certificate to hide the true destination from network-level inspection) or a host-header injection probe reaching for an internal-only virtual host that was never meant to be publicly routable.\n",
+          "level": "high",
+          "platform": "reverse_proxy",
+          "logsource": {
+            "category": "reverse_proxy"
+          },
+          "mitre_attack": [
+            "T1090.004",
+            "T1190"
+          ],
+          "event_ids": [
+            "rp_access_log"
+          ],
+          "required_fields": [
+            "client_ip",
+            "Host",
+            "SNI",
+            "uri"
+          ],
+          "audit_policy": {
+            "gpo_path": "Reverse proxy / load balancer access log configuration (nginx $ssl_server_name, HAProxy %[ssl_fc_sni], Envoy access log SNI field)",
+            "command": "nginx: log_format with $ssl_server_name and $host both present; HAProxy: add %[ssl_fc_sni] to the log-format alongside %[capture.req.hdr(0)] for Host.\n",
+            "notes": "Most default access log formats only capture the Host header, not the negotiated SNI - this rule is silent until SNI is explicitly added to the log format, since it's a separate TLS-layer value from the HTTP Host header the application sees.\n"
+          },
+          "false_positives": [
+            "A deliberately configured multi-tenant reverse proxy or CDN edge where one certificate legitimately fronts several backend hostnames - allowlist those specific Host/SNI pairs before enabling this rule broadly"
+          ],
+          "detection_type": "selection"
+        },
+        {
+          "id": "RP-7003",
+          "title": "Reverse Proxy Admin/Stats Interface Reachable",
+          "description": "Detects a successful request to a reverse proxy or load balancer's own management/status endpoint (nginx stub_status, HAProxy stats page, Envoy admin interface). These expose backend pool membership, connection counts, and sometimes config - reconnaissance value for an attacker, and a sign the interface was left reachable from outside where only internal monitoring should ever reach it.\n",
+          "level": "high",
+          "platform": "reverse_proxy",
+          "logsource": {
+            "category": "reverse_proxy"
+          },
+          "mitre_attack": [
+            "T1595.002",
+            "T1190"
+          ],
+          "event_ids": [
+            "rp_access_log"
+          ],
+          "required_fields": [
+            "client_ip",
+            "uri",
+            "status"
+          ],
+          "audit_policy": {
+            "gpo_path": "Reverse proxy configuration - restrict these endpoints to localhost/an internal monitoring CIDR (allow deny in nginx, or a separate internal-only listener), then log any request that still reaches them",
+            "command": "nginx: location /nginx_status { allow 10.0.0.0/8; deny all; } - ensure the deny still gets logged rather than silently dropped.\n",
+            "notes": "This is a \"should never happen\" rule - any hit from outside the monitoring CIDR is itself the finding, not just a precursor to one.\n"
+          },
+          "false_positives": [
+            "Your own monitoring/scraping system (Prometheus node exporter, Datadog agent) polling the stats endpoint on a schedule - allowlist its source IP rather than disabling the rule"
+          ],
+          "detection_type": "selection"
+        },
+        {
+          "id": "RP-7005",
+          "title": "Cache Poisoning via Spoofed X-Forwarded-Host on a Cached Response",
+          "description": "Detects a cache HIT/cacheable response where the X-Forwarded-Host header the client sent does not match the real Host header. If the backend trusts X-Forwarded-Host to build absolute URLs (password reset links, redirects, asset URLs) but the cache key doesn't include that header, an attacker can poison the shared cache with a response containing their own attacker-controlled links - served to every subsequent visitor who hits the same cache key.\n",
+          "level": "critical",
+          "platform": "reverse_proxy",
+          "logsource": {
+            "category": "reverse_proxy"
+          },
+          "mitre_attack": [
+            "T1190"
+          ],
+          "event_ids": [
+            "rp_access_log"
+          ],
+          "required_fields": [
+            "client_ip",
+            "Host",
+            "X-Forwarded-Host",
+            "cache_status",
+            "uri"
+          ],
+          "audit_policy": {
+            "gpo_path": "Reverse proxy / CDN access log configuration - log the request's X-Forwarded-Host header value and the cache HIT/MISS/BYPASS status per request",
+            "command": "nginx: log_format including $http_x_forwarded_host and $upstream_cache_status; a CDN's edge logging config for the equivalent forwarded-host and cache-status fields.\n",
+            "notes": "The real fix is including X-Forwarded-Host (or dropping/normalizing it entirely) in the cache key, not just detecting after a poisoned response is already cached and being served.\n"
+          },
+          "false_positives": [
+            "A legitimate internal service-to-service call that intentionally sets X-Forwarded-Host while proxying on behalf of another vhost - confirm the cache key strategy actually accounts for this before assuming poisoning"
+          ],
+          "detection_type": "selection"
+        },
+        {
+          "id": "WAF-5001",
+          "title": "SQL Injection Attempt Blocked",
+          "description": "Detects a WAF signature match and block for a SQL injection pattern (e.g. UNION SELECT, tautology-based auth bypass) against a web application.\n",
+          "level": "high",
+          "platform": "waf",
+          "logsource": {
+            "category": "waf"
+          },
+          "mitre_attack": [
+            "T1190"
+          ],
+          "event_ids": [
+            "waf_block"
+          ],
+          "required_fields": [
+            "src_ip",
+            "uri",
+            "matched_rule"
+          ],
+          "audit_policy": {
+            "gpo_path": "WAF (ModSecurity/AWS WAF/Cloudflare WAF) - ensure SQLi rule group is enabled in blocking (not just detection/log) mode, and that blocked requests are shipped to your log pipeline.",
+            "command": "aws wafv2 update-web-acl --rules '[{\"Name\":\"AWSManagedRulesSQLiRuleSet\",...}]'",
+            "notes": "Many WAF deployments start SQLi rule groups in \"count\" (log-only) mode to avoid breaking legitimate traffic during tuning - confirm the rule group is actually set to Block before relying on this detection meaning an attack was stopped.\n"
+          },
+          "false_positives": [
+            "Rare - legitimate application traffic almost never contains SQL syntax in request parameters; a spike may indicate an overly broad signature rather than a real false positive"
+          ],
+          "detection_type": "selection"
+        },
+        {
+          "id": "WAF-5002",
+          "title": "Cross-Site Scripting Attempt Blocked",
+          "description": "Detects a WAF signature match and block for a cross-site scripting (XSS) pattern in a request parameter, header, or body.\n",
+          "level": "medium",
+          "platform": "waf",
+          "logsource": {
+            "category": "waf"
+          },
+          "mitre_attack": [
+            "T1190",
+            "T1059.007"
+          ],
+          "event_ids": [
+            "waf_block"
+          ],
+          "required_fields": [
+            "src_ip",
+            "uri",
+            "matched_rule"
+          ],
+          "audit_policy": {
+            "gpo_path": "WAF - ensure the XSS managed rule group is enabled in blocking mode.",
+            "command": "aws wafv2 update-web-acl --rules '[{\"Name\":\"AWSManagedRulesCommonRuleSet\",...}]'",
+            "notes": "Tune this against known legitimate rich-text/HTML-accepting endpoints before enabling block mode broadly, or expect false positives there.\n"
+          },
+          "false_positives": [
+            "Content-heavy legitimate requests (e.g. a CMS admin pasting HTML/rich text) can trip generic XSS signatures"
+          ],
+          "detection_type": "selection"
+        },
+        {
+          "id": "WAF-5003",
+          "title": "Path Traversal / LFI Attempt Blocked",
+          "description": "Detects a WAF block for a path traversal or local file inclusion pattern (e.g. \"../../etc/passwd\") in the request URI or parameters.\n",
+          "level": "high",
+          "platform": "waf",
+          "logsource": {
+            "category": "waf"
+          },
+          "mitre_attack": [
+            "T1190",
+            "T1083"
+          ],
+          "event_ids": [
+            "waf_block"
+          ],
+          "required_fields": [
+            "src_ip",
+            "uri",
+            "matched_rule"
+          ],
+          "audit_policy": {
+            "gpo_path": "WAF - ensure the LFI/path-traversal managed rule group is enabled in blocking mode.",
+            "command": "aws wafv2 update-web-acl --rules '[{\"Name\":\"AWSManagedRulesLinuxRuleSet\",...}]'",
+            "notes": "Pair with server-side path canonicalization/allow-listing - a WAF signature is one layer, not the only control."
+          },
+          "false_positives": [
+            "Legitimate file-path-like parameters in specialized applications (file managers, CI tools) that weren't allow-listed"
+          ],
+          "detection_type": "selection"
+        },
+        {
+          "id": "WAF-5005",
+          "title": "WAF Attack Signatures Followed by a Successful Login (Possible Successful Exploitation)",
+          "description": "Detects a burst of WAF-blocked attack attempts from a source IP, followed by a successful application login from that same IP shortly after. Individually, \"some blocked requests\" and \"a successful login\" are both low-signal - a scanner gets blocked constantly, and most successful logins are legitimate. The correlation is the point: the same source both attacked the application AND got in. This is a cross-log-source rule - it needs WAF logs and web application/server logs correlated by source IP, which most SIEMs treat as two separate data sources that need to be explicitly joined.\n",
+          "level": "critical",
+          "platform": "waf+web_server",
+          "logsource": {
+            "category": "correlation",
+            "product": "waf+web_server"
+          },
+          "mitre_attack": [
+            "T1190",
+            "T1078"
+          ],
+          "event_ids": [
+            "waf_block",
+            "login_success"
+          ],
+          "required_fields": [
+            "src_ip",
+            "action",
+            "event_type",
+            "result"
+          ],
+          "audit_policy": {
+            "gpo_path": "Requires WAF logs and web application authentication logs to land in the same SIEM/log pipeline with a shared, normalized field for source IP - this is a data-engineering prerequisite, not a single toggle.\n",
+            "command": "n/a - cross-source log pipeline configuration",
+            "notes": "This is the highest-value rule in this category precisely because it can't be built from either log source alone - it's the kind of detection that only exists once your logging is unified enough to correlate across systems, which is usually the actual bottleneck, not the detection logic itself.\n"
+          },
+          "false_positives": [
+            "A legitimate user whose browser/extension triggers WAF signatures (e.g. a security-testing browser extension, an overly aggressive ad blocker mangling requests) followed by their own normal login. Rare, but the reason this is \"critical\" and not an auto-block action - it should page a human, not silently lock the account.\n",
+            "A shared corporate NAT IP where one user got flagged and a different legitimate user later logs in from the same address"
+          ],
+          "detection_type": "sequence"
+        },
+        {
+          "id": "WEB-6003",
+          "title": "Sensitive Admin Path Accessed Successfully",
+          "description": "Detects a successful (HTTP 200) request to a well-known administrative interface path (WordPress admin, phpMyAdmin, generic /administrator). On its own this can be entirely legitimate traffic to a real admin panel - the value is as a building block for correlation (e.g. paired with WAF-5005's login-then-attack pattern) and as a baseline of \"who actually reaches these paths\" for an environment that shouldn't expose them publicly at all.\n",
+          "level": "low",
+          "platform": "web_server",
+          "logsource": {
+            "category": "web_server"
+          },
+          "mitre_attack": [
+            "T1190"
+          ],
+          "event_ids": [
+            "access_log"
+          ],
+          "required_fields": [
+            "client_ip",
+            "uri",
+            "status"
+          ],
+          "audit_policy": {
+            "gpo_path": "Web server access log configuration - status code and URI are standard fields in default log formats.",
+            "command": "# no special config needed beyond default access logging",
+            "notes": "Consider whether these paths should be reachable from the public internet at all - restricting by IP allow-list or VPN is a stronger control than detecting access after the fact.\n"
+          },
+          "false_positives": [
+            "The application's actual, legitimate administrators using the panel normally - this is expected, not incidental"
+          ],
+          "detection_type": "selection"
+        }
+      ],
+      "actions": [
+        {
+          "id": "lb-patch-broker",
+          "label": "Patch the broker and subscribe it to a CVE feed with an SLA",
+          "stage_index": 0,
+          "phase": "preparation"
+        },
+        {
+          "id": "lb-remove-exposure",
+          "label": "Remove the service from the public internet; reach it over VPN only",
+          "stage_index": 0,
+          "phase": "preparation"
+        },
+        {
+          "id": "lb-egress-filter",
+          "label": "Default-deny outbound from DMZ servers, so exploitation can't fetch stage two",
+          "stage_index": 0,
+          "phase": "preparation"
+        }
+      ]
+    },
+    {
+      "id": "foothold",
+      "index": 1,
+      "name": "Foothold and C2",
+      "icon": "🔌",
+      "mitre": [
+        "T1105",
+        "T1218.010",
+        "T1571"
+      ],
+      "narrative": "The exploit runs certutil to pull a stager into %TEMP%, which then beacons out to the operator on a non-standard high port. This is the first step anything in the catalogue can actually see.",
+      "blind_spot_note": "",
+      "rules": [
+        {
+          "id": "SYS-4002",
+          "title": "LOLBin Used to Fetch a Remote Payload",
+          "description": "Detects a living-off-the-land binary (certutil, bitsadmin) making an outbound network connection - both are legitimate Windows tools frequently abused to download second-stage payloads while evading application allow-listing.\n",
+          "level": "high",
+          "platform": "windows",
+          "logsource": {
+            "product": "windows",
+            "service": "sysmon"
+          },
+          "mitre_attack": [
+            "T1105",
+            "T1218.010"
+          ],
+          "event_ids": [
+            "3"
+          ],
+          "required_fields": [
+            "Image",
+            "DestinationIp",
+            "DestinationPort",
+            "Initiated"
+          ],
+          "audit_policy": {
+            "gpo_path": "Sysmon configuration - NetworkConnect (Event ID 3) enabled, ideally scoped to a process include-list to avoid excessive volume.",
+            "command": "sysmon64.exe -c sysmonconfig.xml",
+            "notes": "Network event volume from Sysmon can be very high without filtering - most public baseline configs scope Event ID 3 to a shorter list of processes of interest rather than logging every connection.\n"
+          },
+          "false_positives": [
+            "Legitimate certutil usage for certificate management that happens to touch a CRL/OCSP endpoint over the network"
+          ],
+          "detection_type": "selection"
+        },
+        {
+          "id": "FW-7005",
+          "title": "Outbound Connection to a Known C2-Associated Port",
+          "description": "Detects an allowed outbound connection to a destination port commonly associated with command-and-control frameworks and reverse shells (e.g. Metasploit's and Cobalt Strike's default handler ports) rather than a standard application port.\n",
+          "level": "medium",
+          "platform": "firewall",
+          "logsource": {
+            "category": "firewall"
+          },
+          "mitre_attack": [
+            "T1571"
+          ],
+          "event_ids": [
+            "fw_allow"
+          ],
+          "required_fields": [
+            "action",
+            "zone_dst",
+            "dst_port"
+          ],
+          "audit_policy": {
+            "gpo_path": "Firewall traffic logging - allowed sessions",
+            "command": "Enable allow-session logging so outbound connections on non-standard ports are visible, not just denies.\n",
+            "notes": "Cheap to bypass by simply picking a different port - pair this with FW-7002 (volume) and FW-7004 (retry pattern) rather than relying on it alone.\n"
+          },
+          "false_positives": [
+            "Internal tooling or an authorized penetration test reusing the same default ports",
+            "A custom internal application that happens to use one of these ports"
+          ],
+          "detection_type": "selection"
+        },
+        {
+          "id": "WEBPROXY-9003",
+          "title": "Repeated Requests to an Uncategorized Domain (Possible C2 Beaconing)",
+          "description": "Detects a high volume of requests from the same client to the same uncategorized external domain within a short window - the network signature of malware beaconing to its C2 server at a fixed interval, which produces many small, regular HTTP/HTTPS requests rather than normal human browsing behavior.\n",
+          "level": "high",
+          "platform": "web_proxy",
+          "logsource": {
+            "category": "web_proxy"
+          },
+          "mitre_attack": [
+            "T1071.001"
+          ],
+          "event_ids": [
+            "proxy_request"
+          ],
+          "required_fields": [
+            "category",
+            "domain",
+            "src_ip",
+            "timestamp"
+          ],
+          "audit_policy": {
+            "gpo_path": "Web proxy request logging - per-request, not aggregated",
+            "command": "Ensure the proxy logs every individual request (not just a rolled-up session summary) with domain and category, so request frequency per domain can actually be counted.\n",
+            "notes": "\"uncategorized\" is a deliberately broad selection - most category feeds haven't yet classified brand-new or low-traffic C2 infrastructure, so it lands in the uncategorized bucket by default rather than being pre-flagged as malicious.\n"
+          },
+          "false_positives": [
+            "A legitimate application doing frequent polling/health-checks against its own uncategorized backend API domain",
+            "A single-page web app whose assets/API calls all hit an uncategorized domain rapidly on page load"
+          ],
+          "detection_type": "threshold"
+        }
+      ],
+      "parallel_rules": [],
+      "actions": [
+        {
+          "id": "lb-block-c2",
+          "label": "Block the C2 address and port at the perimeter",
+          "stage_index": 1,
+          "phase": "containment"
+        },
+        {
+          "id": "lb-isolate-broker",
+          "label": "Isolate the broker host via EDR network containment",
+          "stage_index": 1,
+          "phase": "containment"
+        },
+        {
+          "id": "lb-lolbin-policy",
+          "label": "Restrict certutil and bitsadmin via WDAC/AppLocker",
+          "stage_index": 1,
+          "phase": "preparation"
+        }
+      ]
+    },
+    {
+      "id": "persistence",
+      "index": 2,
+      "name": "Persistence and Privilege Escalation",
+      "icon": "🔩",
+      "mitre": [
+        "T1543.003",
+        "T1219",
+        "T1134"
+      ],
+      "narrative": "A remote access tool is installed as an auto-start service to survive reboots, giving the operator a second channel that looks like legitimate IT software. Privileges are raised to SYSTEM through a short-lived service.",
+      "blind_spot_note": "The privilege escalation itself uses a named pipe and a service that exists for barely a second. WIN-1006 catches the service creation, but only if the System log reaches the SIEM before the host is encrypted - on a host that only forwards logs hourly, this detection exists and still arrives too late.",
+      "rules": [
+        {
+          "id": "WIN-1006",
+          "title": "Windows Service Installed",
+          "description": "Detects a new service being installed (EventID 7045). Service installation is how a great many intrusions both persist and escalate: remote-execution frameworks create a transient service to run a payload as SYSTEM, and remote access tools install a permanent auto-start service to survive reboots. The event is low-volume on servers, which makes it unusually cheap to alert on.\n",
+          "level": "high",
+          "platform": "windows",
+          "logsource": {
+            "product": "windows",
+            "service": "system"
+          },
+          "mitre_attack": [
+            "T1543.003",
+            "T1569.002"
+          ],
+          "event_ids": [
+            "7045"
+          ],
+          "required_fields": [
+            "ServiceName",
+            "ImagePath",
+            "ServiceType",
+            "StartType",
+            "AccountName"
+          ],
+          "audit_policy": {
+            "gpo_path": "Logged to the System event log by the Service Control Manager - no audit policy required, but the System log's default size rotates quickly on busy hosts and should be forwarded.\n",
+            "command": "wevtutil sl System /ms:134217728",
+            "notes": "ImagePath is the field that matters: a service pointing at a path under %TEMP%, a raw cmd.exe /c, or a named pipe is far more interesting than the service name, which attackers randomise. Alerting on every 7045 is viable on servers but noisy on workstations - scope by ImagePath first.\n"
+          },
+          "false_positives": [
+            "Software installation and patching, which legitimately creates services - correlate with your change window",
+            "Management agents (backup, EDR, monitoring) deploying to new hosts"
+          ],
+          "detection_type": "selection"
+        },
+        {
+          "id": "SYS-4007",
+          "title": "Remote Monitoring & Management Tool Executed",
+          "description": "Detects execution of a legitimate remote access / RMM tool (AnyDesk, TeamViewer, ScreenConnect, Atera). These are signed, legitimate products, so they sail past application allow-listing and AV - which is exactly why intrusions install them as a resilient backup channel alongside their real C2. The finding is not that the tool is malicious; it is that it appeared on a host where your organisation never deployed it.\n",
+          "level": "high",
+          "platform": "windows",
+          "logsource": {
+            "product": "windows",
+            "service": "sysmon"
+          },
+          "mitre_attack": [
+            "T1219"
+          ],
+          "event_ids": [
+            "1"
+          ],
+          "required_fields": [
+            "Image",
+            "ParentImage",
+            "CommandLine",
+            "User",
+            "Hashes"
+          ],
+          "audit_policy": {
+            "gpo_path": "Sysmon configuration - ProcessCreate (Event ID 1) enabled, which baseline configs include by default.",
+            "command": "sysmon64.exe -c sysmonconfig.xml",
+            "notes": "Pair with WIN-1006 (7045): these tools install a service as well as running a process, so the two rules corroborate each other. If your organisation standardises on one RMM product, invert this rule - alert on every product except that one.\n"
+          },
+          "false_positives": [
+            "Sanctioned remote support tooling - this rule is only meaningful with an allow-list of the products and hosts IT actually uses"
+          ],
+          "detection_type": "selection"
+        }
+      ],
+      "parallel_rules": [],
+      "actions": [
+        {
+          "id": "lb-remove-rmm",
+          "label": "Remove the unauthorised remote access tool and its service",
+          "stage_index": 2,
+          "phase": "eradication"
+        },
+        {
+          "id": "lb-rmm-allowlist",
+          "label": "Allow-list the one RMM product IT uses; alert on every other",
+          "stage_index": 2,
+          "phase": "preparation"
+        },
+        {
+          "id": "lb-realtime-forwarding",
+          "label": "Forward System and Security logs in real time, not on a schedule",
+          "stage_index": 2,
+          "phase": "preparation"
+        }
+      ]
+    },
+    {
+      "id": "evasion-credentials",
+      "index": 3,
+      "name": "Defense Evasion and Credential Access",
+      "icon": "🔓",
+      "mitre": [
+        "T1070.001",
+        "T1003.001",
+        "T1562.001"
+      ],
+      "narrative": "Endpoint protection is switched off, the Security log is cleared, and LSASS memory is read on two servers - handing over domain service account credentials that unlock everything reached in the next stage.",
+      "blind_spot_note": "",
+      "rules": [
+        {
+          "id": "WIN-1007",
+          "title": "Event Log Cleared",
+          "description": "Detects the Security log being cleared (EventID 1102) or any other log being cleared (System EventID 104). Clearing logs is rarely anything but an attempt to destroy evidence, and both events are emitted by the act of clearing itself - so the one record an attacker most wants gone is the one they cannot remove by clearing.\n",
+          "level": "critical",
+          "platform": "windows",
+          "logsource": {
+            "product": "windows",
+            "service": "security"
+          },
+          "mitre_attack": [
+            "T1070.001"
+          ],
+          "event_ids": [
+            "1102",
+            "104"
+          ],
+          "required_fields": [
+            "EventID",
+            "SubjectUserName",
+            "SubjectDomainName",
+            "Computer"
+          ],
+          "audit_policy": {
+            "gpo_path": "1102 is written to the Security log unconditionally when it is cleared; 104 lands in the System log. Neither needs an audit subcategory enabled.\n",
+            "command": "auditpol /set /subcategory:\"Audit Policy Change\" /success:enable /failure:enable",
+            "notes": "This rule is only as good as your log forwarding: if events are shipped off the host in real time, clearing the local log is futile and 1102 becomes a high-signal alert. If they aren't, the alert arrives having already lost the context needed to investigate it.\n"
+          },
+          "false_positives": [
+            "Deliberate log rotation or clearing during decommissioning or forensic imaging",
+            "Some system-rebuild tooling clears logs as a final step"
+          ],
+          "detection_type": "selection"
+        },
+        {
+          "id": "SYS-4006",
+          "title": "LSASS Accessed with Credential-Dumping Rights",
+          "description": "Detects a process opening a handle to lsass.exe with the access mask used to read its memory (0x1010 = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ). LSASS holds the credential material for every active session, so reading its memory is the single most direct route from one compromised host to the rest of the domain. A CallTrace of UNKNOWN alongside this is a strong sign of injected or unbacked code doing the reading.\n",
+          "level": "critical",
+          "platform": "windows",
+          "logsource": {
+            "product": "windows",
+            "service": "sysmon"
+          },
+          "mitre_attack": [
+            "T1003.001"
+          ],
+          "event_ids": [
+            "10"
+          ],
+          "required_fields": [
+            "SourceImage",
+            "TargetImage",
+            "GrantedAccess",
+            "CallTrace"
+          ],
+          "audit_policy": {
+            "gpo_path": "Sysmon configuration - ProcessAccess (Event ID 10) enabled with TargetImage scoped to lsass.exe. It is excluded in many default configs because unscoped ProcessAccess is extremely high volume.\n",
+            "command": "sysmon64.exe -c sysmonconfig.xml",
+            "notes": "Scope ProcessAccess to lsass.exe or this event will overwhelm the pipeline. Filter on GrantedAccess rather than SourceImage: attackers rename their tooling freely, but the access mask needed to read process memory is fixed by the API.\n"
+          },
+          "false_positives": [
+            "EDR, AV and some backup agents legitimately read LSASS - build an allow-list by SourceImage and signature, not by access mask",
+            "Windows Defender and MsMpEng touch LSASS during scans"
+          ],
+          "detection_type": "selection"
+        }
+      ],
+      "parallel_rules": [],
+      "actions": [
+        {
+          "id": "lb-reset-service-accounts",
+          "label": "Reset every credential cached on the affected hosts, service accounts first",
+          "stage_index": 3,
+          "phase": "eradication"
+        },
+        {
+          "id": "lb-tamper-protection",
+          "label": "Enable tamper protection so endpoint protection can't be disabled locally",
+          "stage_index": 3,
+          "phase": "preparation"
+        },
+        {
+          "id": "lb-credential-guard",
+          "label": "Enable Credential Guard to put LSASS secrets out of reach",
+          "stage_index": 3,
+          "phase": "preparation"
+        }
+      ]
+    },
+    {
+      "id": "lateral-movement",
+      "index": 4,
+      "name": "Discovery and Lateral Movement",
+      "icon": "↔",
+      "mitre": [
+        "T1046",
+        "T1021.001",
+        "T1550.002",
+        "T1059.003"
+      ],
+      "narrative": "A scanner sweeps the network for management ports, and the stolen service account is replayed over RDP and remote service execution to reach the file, backup and domain servers.",
+      "blind_spot_note": "",
+      "rules": [
+        {
+          "id": "FW-7001",
+          "title": "Port Scan / Network Reconnaissance from a Single Source",
+          "description": "Detects a burst of firewall-denied connection attempts from the same source IP within a short window - the network-visible signature of a port scan or automated reconnaissance tool probing for open services.\n",
+          "level": "medium",
+          "platform": "firewall",
+          "logsource": {
+            "category": "firewall"
+          },
+          "mitre_attack": [
+            "T1595.001"
+          ],
+          "event_ids": [
+            "fw_deny"
+          ],
+          "required_fields": [
+            "action",
+            "src_ip",
+            "timestamp"
+          ],
+          "audit_policy": {
+            "gpo_path": "Firewall security/access-control rule logging profile",
+            "command": "Attach a logging profile that logs denied sessions to every security/access-control rule, not just the default \"deny all\" catch-all - most NGFWs (Palo Alto PAN-OS, Cisco ASA/FTD, FortiGate, pfSense) log denies by default, but confirm it is actually enabled per rule.\n",
+            "notes": "Without per-rule deny logging, only the traffic hitting the final catch-all rule is visible - denies matched earlier in the rulebase (e.g. an explicit \"block known-bad-country\" rule) can silently go unlogged.\n"
+          },
+          "false_positives": [
+            "Vulnerability scanning performed by the organization's own security team",
+            "A misconfigured client retrying a blocked connection in a loop",
+            "Monitoring/health-check traffic hitting a decommissioned rule or host"
+          ],
+          "detection_type": "threshold"
+        },
+        {
+          "id": "FW-7003",
+          "title": "Administrative Port Allowed Inbound from an Untrusted Zone",
+          "description": "Detects the firewall allowing an inbound connection to a remote-administration port (RDP, SMB) from an untrusted/external zone - exposing a high-value lateral-movement and initial-access surface directly to the internet.\n",
+          "level": "high",
+          "platform": "firewall",
+          "logsource": {
+            "category": "firewall"
+          },
+          "mitre_attack": [
+            "T1021.001"
+          ],
+          "event_ids": [
+            "fw_allow"
+          ],
+          "required_fields": [
+            "action",
+            "zone_src",
+            "dst_port"
+          ],
+          "audit_policy": {
+            "gpo_path": "Firewall traffic logging - allowed sessions",
+            "command": "Enable allow-session logging on inbound rules - many firewalls only log denies by default, so successful inbound connections stay invisible unless allow-logging is explicitly turned on per rule.\n",
+            "notes": "This is a rule about exposure, not an active attack signature - a single hit means the rulebase itself needs review, not just the one session.\n"
+          },
+          "false_positives": [
+            "An intentional, source-IP-restricted RDP/SMB jump host rule",
+            "Site-to-site VPN traffic misclassified into the untrust zone"
+          ],
+          "detection_type": "selection"
+        },
+        {
+          "id": "WIN-1005",
+          "title": "Suspicious NTLM Network Logon (Possible Pass-the-Hash)",
+          "description": "Detects a successful network logon (EventID 4624, LogonType 3) authenticated via NTLM rather than Kerberos, which is one of the strongest low-noise indicators of pass-the-hash / pass-the-ticket lateral movement in a Kerberos-default AD environment.\n",
+          "level": "high",
+          "platform": "windows",
+          "logsource": {
+            "product": "windows",
+            "service": "security"
+          },
+          "mitre_attack": [
+            "T1550.002",
+            "T1021.002"
+          ],
+          "event_ids": [
+            "4624"
+          ],
+          "required_fields": [
+            "TargetUserName",
+            "TargetSid",
+            "IpAddress",
+            "WorkstationName",
+            "AuthenticationPackageName",
+            "LmPackageName"
+          ],
+          "audit_policy": {
+            "gpo_path": "Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration > Logon/Logoff > Audit Logon; plus Computer Configuration > Administrative Templates > Network > Network security > Restrict NTLM > Audit NTLM authentication in this domain\n",
+            "command": "auditpol /set /subcategory:\"Logon\" /success:enable /failure:enable",
+            "notes": "AuthenticationPackageName and LmPackageName are present on 4624 by default, but if you want domain-wide NTLM usage auditing (recommended for baselining \"who still uses NTLM\" before you can alert on it), also enable the NTLM auditing GPO above so denied/allowed NTLM traffic is logged as EventID 8004.\n"
+          },
+          "false_positives": [
+            "Legacy applications/services that don't support Kerberos (file shares, older printers)",
+            "Logons across a domain trust that doesn't support Kerberos"
+          ],
+          "detection_type": "selection"
+        },
+        {
+          "id": "WIN-1008",
+          "title": "Interactive Shell Spawned Under a Service Account",
+          "description": "Detects process creation (EventID 4688) where a command interpreter runs under an account whose name marks it as a service account. Service accounts run services; they do not open shells. A cmd.exe or powershell.exe parented under one is a strong indicator that harvested service-account credentials are being used for hands-on-keyboard activity.\n",
+          "level": "high",
+          "platform": "windows",
+          "logsource": {
+            "product": "windows",
+            "service": "security"
+          },
+          "mitre_attack": [
+            "T1059.003",
+            "T1078.003"
+          ],
+          "event_ids": [
+            "4688"
+          ],
+          "required_fields": [
+            "NewProcessName",
+            "ParentProcessName",
+            "SubjectUserName",
+            "CommandLine"
+          ],
+          "audit_policy": {
+            "gpo_path": "Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration > Detailed Tracking > Audit Process Creation\n",
+            "command": "auditpol /set /subcategory:\"Process Creation\" /success:enable",
+            "notes": "CommandLine is NOT populated in 4688 by default - without the separate \"Include command line in process creation events\" policy this rule can still fire but the investigation has nothing to work with. Enable both, or prefer Sysmon Event ID 1, which carries the command line natively.\n"
+          },
+          "false_positives": [
+            "Scheduled maintenance scripts that legitimately run as a service account",
+            "Installers and DBA tooling that shell out under a service context"
+          ],
+          "detection_type": "selection"
+        }
+      ],
+      "parallel_rules": [
+        {
+          "id": "WIN-1002",
+          "title": "RDP Brute Force Attempt",
+          "description": "Detects a burst of failed logons (EventID 4625) with LogonType 10 (RemoteInteractive) against a single account from a single source IP - classic RDP password spraying, usually against internet-facing jump boxes or RDP gateways.\n",
+          "level": "high",
+          "platform": "windows",
+          "logsource": {
+            "product": "windows",
+            "service": "security"
+          },
+          "mitre_attack": [
+            "T1110.001",
+            "T1021.001"
+          ],
+          "event_ids": [
+            "4625"
+          ],
+          "required_fields": [
+            "TargetUserName",
+            "IpAddress",
+            "LogonType",
+            "WorkstationName"
+          ],
+          "audit_policy": {
+            "gpo_path": "Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration > Logon/Logoff > Audit Logon (Success and Failure)\n",
+            "command": "auditpol /set /subcategory:\"Logon\" /success:enable /failure:enable",
+            "notes": "Same subcategory as WIN-1001. Confirm the RDP host's Windows Firewall / NLA settings aren't swallowing pre-auth attempts, and that the log source is actually the RDP target host, not just a jump-box's own login.\n"
+          },
+          "false_positives": [
+            "Legitimate users behind a corporate VPN/NAT hitting the same jump box"
+          ],
+          "detection_type": "threshold"
+        }
+      ],
+      "actions": [
+        {
+          "id": "lb-disable-accounts",
+          "label": "Disable the compromised service accounts and revoke their sessions",
+          "stage_index": 4,
+          "phase": "containment"
+        },
+        {
+          "id": "lb-segment-rdp",
+          "label": "Segment RDP so servers accept it only from a jump host",
+          "stage_index": 4,
+          "phase": "preparation"
+        },
+        {
+          "id": "lb-tier-admin",
+          "label": "Tier administrative accounts so one server's credentials can't reach the domain",
+          "stage_index": 4,
+          "phase": "preparation"
+        }
+      ]
+    },
+    {
+      "id": "ransomware",
+      "index": 5,
+      "name": "Ransomware Deployment",
+      "icon": "🔒",
+      "mitre": [
+        "T1486",
+        "T1490"
+      ],
+      "narrative": "Backups are encrypted first, then the file server. The whole deployment takes under 90 minutes - after 19 days of quiet access that nobody acted on.",
+      "blind_spot_note": "There is deliberately no detection rule here. By the time a ransomware binary executes, detection has already failed - an alert at this stage tells you what you are about to lose, not how to keep it. Every response action below is recovery, and all of the ones that would have mattered sit in the five stages above. This stage exists to make that visible.",
+      "rules": [],
+      "parallel_rules": [],
+      "actions": [
+        {
+          "id": "lb-offline-backups",
+          "label": "Keep offline, immutable backups that a domain admin cannot reach",
+          "stage_index": 5,
+          "phase": "preparation"
+        },
+        {
+          "id": "lb-restore",
+          "label": "Rebuild from known-good media and restore from immutable backups",
+          "stage_index": 5,
+          "phase": "recovery"
+        },
+        {
+          "id": "lb-notify",
+          "label": "Notify regulators, insurers and affected parties",
+          "stage_index": 5,
+          "phase": "recovery"
+        }
+      ]
+    }
+  ],
+  "entities": [
+    {
+      "name": "Message Broker",
+      "identifier": "SRV-MQ01",
+      "furthest_stage": 3,
+      "status": "compromised",
+      "note": "Patient zero - the exposed broker. Exploited twice 18 days apart, and the first host to have its LSASS memory read.",
+      "evidence": {
+        "executed": true,
+        "credential_access": true,
+        "encrypted": false,
+        "caption": "sysmon events attributed to this intrusion",
+        "events": [
+          {
+            "timestamp": "2026-02-08T22:41:10+00:00",
+            "headline": "Sysmon 1: uFSyLszKsuR.exe",
+            "summary": "Metasploit stager dropped by the ActiveMQ java process",
+            "notable": false
+          },
+          {
+            "timestamp": "2026-02-08T22:41:12+00:00",
+            "headline": "Sysmon 1: certutil.exe",
+            "summary": "certutil fetching the stager - the first detectable step (SYS-4002)",
+            "notable": false
+          },
+          {
+            "timestamp": "2026-02-08T22:58:33+00:00",
+            "headline": "Sysmon 10: uFSyLszKsuR.exe -> lsass.exe (0x1010)",
+            "summary": "LSASS read - service account credentials harvested (SYS-4006)",
+            "notable": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "Exchange Server",
+      "identifier": "SRV-EXCH01",
+      "furthest_stage": 3,
+      "status": "compromised",
+      "note": "Endpoint protection disabled before tooling was staged, then credentials harvested. Not encrypted - but every credential cached on it must be treated as lost.",
+      "evidence": {
+        "executed": true,
+        "credential_access": true,
+        "encrypted": false,
+        "caption": "sysmon events attributed to this intrusion",
+        "events": [
+          {
+            "timestamp": "2026-02-09T01:14:02+00:00",
+            "headline": "Sysmon 1: SystemSettingsAdminFlows.exe",
+            "summary": "Defender disabled ahead of tooling being staged",
+            "notable": false
+          },
+          {
+            "timestamp": "2026-02-09T01:22:40+00:00",
+            "headline": "Sysmon 10: uFSyLszKsuR.exe -> lsass.exe (0x1010)",
+            "summary": "LSASS read on a second host (SYS-4006)",
+            "notable": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "File Server",
+      "identifier": "SRV-FILE01",
+      "furthest_stage": 5,
+      "status": "encrypted",
+      "note": "Carried the remote access tool and had its Security log cleared 17 days before encryption. The cleared log was itself the loudest available signal, and no one was watching for it.",
+      "evidence": {
+        "executed": true,
+        "credential_access": false,
+        "encrypted": true,
+        "caption": "sysmon events attributed to this intrusion",
+        "events": [
+          {
+            "timestamp": "2026-02-10T02:31:50+00:00",
+            "headline": "Sysmon 1: AnyDesk.exe",
+            "summary": "AnyDesk installed as a resilient second channel (SYS-4007 / WIN-1006)",
+            "notable": false
+          },
+          {
+            "timestamp": "2026-02-10T04:02:11+00:00",
+            "headline": "Sysmon 1: wevtutil.exe",
+            "summary": "Security log cleared (WIN-1007)",
+            "notable": false
+          },
+          {
+            "timestamp": "2026-02-27T21:48:03+00:00",
+            "headline": "Sysmon 1: LB3.exe",
+            "summary": "LockBit deployed - file server encrypted",
+            "notable": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "Backup Server",
+      "identifier": "SRV-BACKUP01",
+      "furthest_stage": 5,
+      "status": "encrypted",
+      "note": "Reached over RDP with the stolen service account and encrypted first, deliberately - removing the recovery option before anyone noticed the rest.",
+      "evidence": {
+        "executed": true,
+        "credential_access": false,
+        "encrypted": true,
+        "caption": "sysmon events attributed to this intrusion",
+        "events": [
+          {
+            "timestamp": "2026-02-27T21:31:19+00:00",
+            "headline": "Sysmon 1: mstsc.exe",
+            "summary": "Inbound RDP using harvested svc_backup credentials",
+            "notable": false
+          },
+          {
+            "timestamp": "2026-02-27T21:44:55+00:00",
+            "headline": "Sysmon 1: LB3_pass.exe",
+            "summary": "Backups encrypted first, to remove the recovery option",
+            "notable": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "Domain Controller",
+      "identifier": "SRV-DC01",
+      "furthest_stage": 4,
+      "status": "compromised",
+      "note": "Used for discovery and authentication during lateral movement. Not encrypted, but a domain controller in the blast radius means the whole domain needs rebuilding regardless.",
+      "evidence": {
+        "executed": true,
+        "credential_access": false,
+        "encrypted": false,
+        "caption": "sysmon events attributed to this intrusion",
+        "events": [
+          {
+            "timestamp": "2026-02-27T20:12:44+00:00",
+            "headline": "Sysmon 1: advanced_ip_scanner.exe",
+            "summary": "Advanced IP Scanner sweeping 22/135/139/445/3389/5985/8080 (FW-7001)",
+            "notable": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "Finance Workstation",
+      "identifier": "WKSTN-042",
+      "furthest_stage": 4,
+      "status": "compromised",
+      "note": "Reached by remote service execution running obfuscated PowerShell under a service account - a workstation with no business reason to run either.",
+      "evidence": {
+        "executed": true,
+        "credential_access": false,
+        "encrypted": false,
+        "caption": "sysmon events attributed to this intrusion",
+        "events": [
+          {
+            "timestamp": "2026-02-27T20:40:09+00:00",
+            "headline": "Sysmon 1: powershell.exe",
+            "summary": "Obfuscated PowerShell payload executed via remote service (WIN-1008)",
+            "notable": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "Print Server",
+      "identifier": "SRV-PRINT01",
+      "furthest_stage": -1,
+      "status": "safe",
+      "note": "Never touched. It sits on a segment the stolen credentials had no rights to, which is the only reason it survived.",
+      "evidence": {
+        "executed": false,
+        "credential_access": false,
+        "encrypted": false,
+        "caption": "sysmon events attributed to this intrusion",
+        "events": []
+      }
+    },
+    {
+      "name": "Reception Workstation",
+      "identifier": "WKSTN-119",
+      "furthest_stage": 0,
+      "status": "unknown",
+      "note": "No Sysmon deployed, so there is no telemetry for this host in the window. It may be untouched or it may have been encrypted - the logs cannot say, and no containment action changes that. Treat as compromised until proven otherwise.",
+      "evidence": {
+        "executed": false,
+        "credential_access": false,
+        "encrypted": false,
+        "caption": "sysmon events attributed to this intrusion",
+        "events": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,211 @@
+id: phishing_account_takeover
+slug: phishing_account_takeover
+title: "Phishing to Account Takeover"
+summary: >-
+  A password-expiry phishing campaign against 8 recipients, traced from delivery
+  to a malicious inbox forwarding rule.
+icon: "\U0001F3A3"
+entity_label: Mailbox
+
+scenario:
+  name: Password Expiry Phishing Campaign
+  sender_display_name: IT Helpdesk
+  sender_address: it-support@corp-secure-verify.com
+  subject: "Action Required: Your password expires today"
+  lookalike_domain: corp-secure-verify.com
+  phishing_kit_url: https://corp-secure-verify.com/reset
+  sent_at: "2026-04-02T08:45:00+00:00"
+  recipients: 8
+
+# Derived from a real proxy log rather than asserted: see tests/test_incidents.py
+evidence:
+  correlator: web_proxy_get_post
+  log: sample_logs/phishing_campaign_web_proxy.json
+  # Which correlator flag proves an entity reached which stage. Tested both
+  # ways: a flag set below its stage, or missing at/above it, fails the build.
+  proves:
+    clicked: 1
+    credentials_entered: 2
+
+status_model:
+  - id: safe
+    label: Safe
+    tone: good
+    max_stage: 0
+  # Never derived from stage reach - only ever set explicitly, and never cleared
+  # by a containment cap, because a cap says nothing about a user we can't see.
+  - id: unknown
+    label: Unknown
+    tone: neutral
+    sticky: true
+  - id: at_risk
+    label: At Risk
+    tone: warn
+    max_stage: 1
+  - id: compromised
+    label: Compromised
+    tone: bad
+    max_stage: 3
+  - id: compromised_active
+    label: Compromised (Active)
+    tone: critical
+
+stages:
+  - id: delivery
+    icon: "\U0001F4E7"
+    index: 0
+    name: Email Delivered
+    mitre: [T1566.002]
+    narrative: >-
+      The spoofed 'IT Helpdesk' email lands in 7 of 8 mailboxes; the email
+      gateway's own sandboxing catches and blocks it for the 8th.
+    rule_ids: [EMAIL-8006]
+    actions:
+      - id: block-sender
+        label: Retroactively purge / block sender domain at the email gateway
+        phase: containment
+      - id: url-rewrite
+        label: Enable time-of-click URL rewriting / sandboxing (Safe Links)
+        phase: preparation
+
+  - id: click
+    icon: "\U0001F5B1"
+    index: 1
+    name: Link Clicked
+    mitre: [T1204.001]
+    narrative: >-
+      4 recipients click through to the lookalike domain's fake Microsoft-style
+      login page - confirmed as a GET to the phishing URL in the web proxy log,
+      correlated per user below.
+    rule_ids: [WEBPROXY-9002]
+    actions:
+      - id: block-domain-proxy
+        label: Block the lookalike domain at the web proxy/firewall
+        phase: containment
+      - id: isolate-endpoint
+        label: Isolate the endpoint via EDR network containment
+        phase: containment
+
+  - id: credentials
+    icon: "\U0001F511"
+    index: 2
+    name: Credentials Entered
+    mitre: [T1598.003, T1556]
+    narrative: >-
+      3 of those recipients type their corporate username and password into the
+      fake page.
+    rule_ids: []
+    blind_spot_note: >-
+      The credential submission itself happens on attacker-controlled
+      infrastructure - no internal log sees the password. The proxy log's best
+      proxy signal is a POST request to the same phishing URL right after the
+      GET (see per-user evidence below); the first hard confirmation usually
+      comes later, at the attacker sign-in stage.
+    actions:
+      - id: force-reset
+        label: Force a password reset for every user who reached this stage
+        phase: eradication
+      - id: mfa-reenroll
+        label: Require MFA re-registration before the next sign-in
+        phase: eradication
+
+  - id: attacker-logon
+    icon: "\U0001F575"
+    index: 3
+    name: Attacker Signs In
+    mitre: [T1078, T1078.004]
+    narrative: >-
+      The attacker replays the harvested credentials. One attempt is blocked by
+      an MFA challenge it can't satisfy; one succeeds outright from a different
+      country minutes later.
+    rule_ids: [ID-9001]
+    actions:
+      - id: disable-account
+        label: Disable the compromised account
+        phase: containment
+      - id: revoke-sessions
+        label: Revoke all active sessions/refresh tokens
+        phase: containment
+
+  - id: post-compromise
+    icon: "\U0001F4E4"
+    index: 4
+    name: Post-Compromise Action
+    mitre: [T1114.003, T1098.002]
+    narrative: >-
+      Inside the mailbox, the attacker immediately creates a quiet external
+      forwarding rule to keep receiving mail after the password is eventually
+      changed.
+    rule_ids: [ID-9002]
+    actions:
+      - id: remove-rule
+        label: Remove the malicious inbox forwarding rule
+        phase: eradication
+      - id: notify-contacts
+        label: Notify recipients of any lateral phishing sent from the mailbox
+        phase: recovery
+      - id: forensics
+        label: Open a full forensic review of the mailbox and OAuth app consents
+        phase: recovery
+
+entities:
+  - name: Tariq Nguyen
+    identifier: tnguyen@corp.com
+    furthest_stage: -1
+    status: safe
+    note: Email gateway sandboxing detonated the link and blocked delivery outright.
+
+  - name: Asha Smith
+    identifier: asmith@corp.com
+    furthest_stage: 0
+    status: safe
+    note: Reported the email via the Report Phishing button within 4 minutes of delivery.
+
+  - name: Jamie Doe
+    identifier: jdoe@corp.com
+    furthest_stage: 0
+    status: safe
+    note: Read the subject line, recognized it as suspicious, and deleted it without clicking.
+
+  - name: Kayla Garcia
+    identifier: kgarcia@corp.com
+    furthest_stage: 0
+    status: unknown
+    note: >-
+      No corporate proxy/EDR telemetry for this user in the window - the email
+      was opened on an unmanaged personal device. Treat as compromised until
+      confirmed otherwise.
+
+  - name: Ben Wong
+    identifier: bwong@corp.com
+    furthest_stage: 1
+    status: at_risk
+    note: >-
+      Clicked the link, saw the fake login page, got suspicious and closed the
+      tab without entering anything.
+
+  - name: Liam Jackson
+    identifier: ljackson@corp.com
+    furthest_stage: 2
+    status: compromised
+    note: >-
+      Entered credentials on the fake page; no follow-on sign-in observed yet in
+      this window - assume the credential is live and unused so far, reset
+      immediately.
+
+  - name: Raj Patel
+    identifier: rpatel@corp.com
+    furthest_stage: 2
+    status: compromised
+    note: >-
+      Entered credentials; the attacker's follow-on sign-in from Russia was
+      blocked by an MFA challenge it couldn't satisfy. Credentials are burned
+      but the account itself was not taken over.
+
+  - name: Maria Chen
+    identifier: mchen@corp.com
+    furthest_stage: 4
+    status: compromised_active
+    note: >-
+      Entered credentials; the attacker signed in 14 minutes later from Nigeria
+      and immediately added an external mailbox forwarding rule.

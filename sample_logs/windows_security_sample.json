@@ -88,5 +88,43 @@
     "MemberName": "temp-contractor",
     "MemberSid": "S-1-5-21-3623811015-3361044348-30300820-3300",
     "GroupName": "Administrators"
+  },
+  {
+    "EventID": 7045,
+    "TimeCreated": "2026-02-10T02:14:03+00:00",
+    "Computer": "SRV-FILE01",
+    "ServiceName": "kesknq",
+    "ImagePath": "%COMSPEC% /c echo kesknq > \\\\.\\pipe\\kesknq",
+    "ServiceType": "user mode service",
+    "StartType": "demand start",
+    "AccountName": "LocalSystem"
+  },
+  {
+    "EventID": 7045,
+    "TimeCreated": "2026-02-10T02:31:47+00:00",
+    "Computer": "SRV-FILE01",
+    "ServiceName": "AnyDesk",
+    "ImagePath": "C:\\Program Files (x86)\\AnyDesk\\AnyDesk.exe --service",
+    "ServiceType": "user mode service",
+    "StartType": "auto start",
+    "AccountName": "LocalSystem"
+  },
+  {
+    "EventID": 1102,
+    "TimeCreated": "2026-02-10T04:02:11+00:00",
+    "Computer": "SRV-FILE01",
+    "SubjectUserName": "svc_backup",
+    "SubjectDomainName": "CORP",
+    "SubjectLogonId": "0x3e7"
+  },
+  {
+    "EventID": 4688,
+    "TimeCreated": "2026-02-10T03:12:55+00:00",
+    "Computer": "SRV-SQL01",
+    "SubjectUserName": "svc_sql",
+    "SubjectDomainName": "CORP",
+    "NewProcessName": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "ParentProcessName": "C:\\Windows\\System32\\services.exe",
+    "CommandLine": "powershell.exe -nop -w hidden -enc JABjAGwAaQBlAG4AdAA9AE4A..."
   }
 ]

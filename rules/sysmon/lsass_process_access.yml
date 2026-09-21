@@ -1,0 +1,47 @@
+id: SYS-4006
+title: LSASS Accessed with Credential-Dumping Rights
+description: >
+  Detects a process opening a handle to lsass.exe with the access mask used to
+  read its memory (0x1010 = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ).
+  LSASS holds the credential material for every active session, so reading its
+  memory is the single most direct route from one compromised host to the rest
+  of the domain. A CallTrace of UNKNOWN alongside this is a strong sign of
+  injected or unbacked code doing the reading.
+level: critical
+mitre_attack:
+  - T1003.001
+logsource:
+  product: windows
+  service: sysmon
+event_ids:
+  - "10"
+detection_type: selection
+selection:
+  EventID: 10
+  TargetImage|endswith: "lsass.exe"
+  GrantedAccess:
+    - "0x1010"
+    - "0x1410"
+    - "0x1438"
+    - "0x143a"
+required_fields:
+  - SourceImage
+  - TargetImage
+  - GrantedAccess
+  - CallTrace
+false_positives:
+  - EDR, AV and some backup agents legitimately read LSASS - build an allow-list by SourceImage and signature, not by access mask
+  - Windows Defender and MsMpEng touch LSASS during scans
+references:
+  - https://attack.mitre.org/techniques/T1003/001/
+audit_policy:
+  gpo_path: >
+    Sysmon configuration - ProcessAccess (Event ID 10) enabled with
+    TargetImage scoped to lsass.exe. It is excluded in many default configs
+    because unscoped ProcessAccess is extremely high volume.
+  command: sysmon64.exe -c sysmonconfig.xml
+  notes: >
+    Scope ProcessAccess to lsass.exe or this event will overwhelm the pipeline.
+    Filter on GrantedAccess rather than SourceImage: attackers rename their
+    tooling freely, but the access mask needed to read process memory is fixed
+    by the API.

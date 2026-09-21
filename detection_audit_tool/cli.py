@@ -7,7 +7,9 @@
     dat lookup 4625
     dat search "brute force"
     dat simulate brute-force
-    dat simulate phishing [--out phishing_incident.html] [--json incidents/phishing_account_takeover.json]
+    dat incidents list
+    dat incidents show phishing_account_takeover
+    dat simulate incident <id> [--out page.html] [--json exports/incidents/<id>.json]
     dat run --logs sample_logs/windows_security_sample.json
     dat audit --logs sample_logs/windows_security_sample.json
     dat export-html [--out catalogue.html]
@@ -24,15 +26,33 @@ from typing import List
 from .audit import audit_rules
 from .event_catalogue import DEFAULT_CATALOGUE_PATH, find_event, load_windows_events
 from .html_export import export_html
-from .incident_export import export_phishing_incident_html, export_phishing_incident_json
+from .incident_export import export_incident_html, export_incident_json
 from .lookup import lookup_event, search
 from .matcher import run_rules
 from .models import Event, Rule
-from .phishing_incident import STAGES, USERS, stage_reach_counts
+from .incident_loader import IncidentLoadError, find_incident, load_incidents
 from .rule_loader import RuleLoadError, load_rules
 from .simulator import build_brute_force_scenario, narrate_scenario
 
-DEFAULT_RULES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rules")
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEFAULT_RULES_DIR = os.path.join(PROJECT_ROOT, "rules")
+DEFAULT_INCIDENTS_DIR = os.path.join(PROJECT_ROOT, "incidents")
+
+
+def _load_incidents(incidents_dir: str):
+    try:
+        return load_incidents(incidents_dir)
+    except IncidentLoadError as exc:
+        print(f"error loading incidents: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _find(incidents, incident_id: str):
+    try:
+        return find_incident(incidents, incident_id)
+    except IncidentLoadError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 def _load(rules_dir: str) -> List[Rule]:
@@ -178,25 +198,63 @@ def cmd_simulate_brute_force(args: argparse.Namespace) -> None:
         print(f"  {d.summary}")
 
 
-def cmd_simulate_phishing(args: argparse.Namespace) -> None:
-    counts = stage_reach_counts()
-    print(f"=== {len(USERS)} recipients, kill-chain reach ===\n")
-    for stage in STAGES:
-        print(f"[{stage.index}] {stage.name}: {counts[stage.id]}/{len(USERS)} users reached this stage")
+def cmd_incidents_list(args: argparse.Namespace) -> None:
+    incidents = _load_incidents(args.incidents_dir)
+    if not incidents:
+        print("no incidents found")
+        return
+    for incident in incidents:
+        print(f"[{incident.id}] {incident.title}")
+        print(f"  {len(incident.stages)} stages, {len(incident.entities)} {incident.entity_label.lower()}(s)")
+        if incident.source.get("url"):
+            print(f"  modelled on: {incident.source.get('name', incident.source['url'])}")
+
+
+def cmd_incidents_show(args: argparse.Namespace) -> None:
+    incident = _find(_load_incidents(args.incidents_dir), args.incident_id)
+    counts = incident.stage_reach_counts()
+    total = len(incident.entities)
+    label = incident.entity_label.lower()
+
+    print(f"=== {incident.title} ===")
+    if incident.summary:
+        print(f"{incident.summary}\n")
+    if incident.source.get("url"):
+        print(f"Modelled on public research: {incident.source.get('name', '')} {incident.source['url']}\n")
+
+    print(f"=== {total} {label}(s), kill-chain reach ===\n")
+    for stage in incident.stages:
+        print(f"[{stage.index}] {stage.name}: {counts[stage.id]}/{total} reached this stage")
+        if stage.rule_ids:
+            print(f"      detected by: {', '.join(stage.rule_ids)}")
         if stage.blind_spot_note:
             print(f"      blind spot: {stage.blind_spot_note}")
-    print("\n=== User triage ===\n")
-    for user in USERS:
-        print(f"{user.name:<14} ({user.mailbox}): {user.status.upper()}")
-        print(f"    {user.note}")
+
+    print(f"\n=== {incident.entity_label} triage ===\n")
+    width = max((len(e.name) for e in incident.entities), default=10)
+    for entity in incident.entities:
+        print(f"{entity.name:<{width}} ({entity.identifier}): {entity.status.upper()}")
+        if entity.note:
+            print(f"    {entity.note}")
+
+
+def cmd_simulate_incident(args: argparse.Namespace) -> None:
+    incident = _find(_load_incidents(args.incidents_dir), args.incident_id)
+    cmd_incidents_show(args)
     if args.out or args.json:
         rules = _load(args.rules_dir)
         if args.out:
-            export_phishing_incident_html(rules, args.out)
+            export_incident_html(incident, rules, args.out, PROJECT_ROOT)
             print(f"\nwrote interactive walkthrough to {args.out}")
         if args.json:
-            export_phishing_incident_json(rules, args.json)
+            export_incident_json(incident, rules, args.json, PROJECT_ROOT)
             print(f"wrote incident data to {args.json}")
+
+
+def cmd_simulate_phishing(args: argparse.Namespace) -> None:
+    """Back-compat alias for `simulate incident phishing_account_takeover`."""
+    args.incident_id = "phishing_account_takeover"
+    cmd_simulate_incident(args)
 
 
 def cmd_run(args: argparse.Namespace) -> None:
@@ -238,9 +296,20 @@ def cmd_export_html(args: argparse.Namespace) -> None:
     print(f"wrote {len(rules)} rules and {len(events)} reference events to {args.out}")
 
 
+def _add_export_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--out", help="write the interactive HTML kill-chain walkthrough to this path")
+    parser.add_argument(
+        "--json",
+        help="write the incident as JSON data for another renderer to consume, e.g. SignalHunt",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="dat", description="Detection rule catalogue, simulator, and log auditor")
     parser.add_argument("--rules-dir", default=DEFAULT_RULES_DIR, help="directory of Sigma-style YAML rules")
+    parser.add_argument(
+        "--incidents-dir", default=DEFAULT_INCIDENTS_DIR, help="directory of YAML incident definitions"
+    )
     parser.add_argument(
         "--events-file", default=DEFAULT_CATALOGUE_PATH, help="Windows Security event reference YAML"
     )
@@ -272,20 +341,30 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.add_argument("query")
     p_search.set_defaults(func=cmd_search)
 
+    p_incidents = sub.add_parser("incidents", help="browse the incident walkthroughs")
+    incidents_sub = p_incidents.add_subparsers(dest="incidents_command", required=True)
+    p_inc_list = incidents_sub.add_parser("list", help="list every incident")
+    p_inc_list.set_defaults(func=cmd_incidents_list)
+    p_inc_show = incidents_sub.add_parser("show", help="print one incident's kill chain and triage")
+    p_inc_show.add_argument("incident_id")
+    p_inc_show.set_defaults(func=cmd_incidents_show)
+
     p_simulate = sub.add_parser("simulate", help="run a canned attack-to-detection scenario")
     sim_sub = p_simulate.add_subparsers(dest="simulate_command", required=True)
     p_sim_bf = sim_sub.add_parser("brute-force", help="password spray -> successful logon")
     p_sim_bf.add_argument("--failed-attempts", type=int, default=6)
     p_sim_bf.set_defaults(func=cmd_simulate_brute_force)
 
-    p_sim_phish = sim_sub.add_parser(
-        "phishing", help="phishing -> credential harvest -> account takeover, with interactive HTML walkthrough"
+    p_sim_incident = sim_sub.add_parser(
+        "incident", help="walk one incident's kill chain, with optional interactive HTML/JSON export"
     )
-    p_sim_phish.add_argument("--out", help="write the interactive HTML kill-chain walkthrough to this path")
-    p_sim_phish.add_argument(
-        "--json",
-        help="write the incident as JSON data (campaign/stages/users) for another renderer to consume, e.g. SignalHunt",
-    )
+    p_sim_incident.add_argument("incident_id", help="incident id, as listed by `dat incidents list`")
+    _add_export_args(p_sim_incident)
+    p_sim_incident.set_defaults(func=cmd_simulate_incident)
+
+    # Kept so existing docs and scripts don't break now that incidents are data.
+    p_sim_phish = sim_sub.add_parser("phishing", help="alias for `simulate incident phishing_account_takeover`")
+    _add_export_args(p_sim_phish)
     p_sim_phish.set_defaults(func=cmd_simulate_phishing)
 
     p_run = sub.add_parser("run", help="run all rules against a log file")

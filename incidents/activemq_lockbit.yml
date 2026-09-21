@@ -1,0 +1,275 @@
+id: activemq_lockbit
+slug: activemq_lockbit
+title: "Exposed Service to Domain-Wide Ransomware"
+summary: >-
+  An internet-facing message broker is exploited, and 19 days later the
+  ransomware lands. A simulation of where that chain could have been broken.
+icon: "\U0001F9E8"
+entity_label: Host
+
+# This is an ORIGINAL simulation - our own hosts, narrative and synthetic logs -
+# modelled on the publicly documented technique sequence in the report below.
+# No prose, screenshots or detection rules from that report are reproduced here.
+source:
+  name: "The DFIR Report - Apache ActiveMQ Exploit Leads to LockBit Ransomware"
+  url: https://thedfirreport.com/2026/02/23/apache-activemq-exploit-leads-to-lockbit-ransomware/
+
+scenario:
+  name: Exposed Broker to Domain-Wide Ransomware
+  initial_access: CVE-2023-46604 on an internet-facing Apache ActiveMQ broker
+  first_seen: "2026-02-08T22:41:00+00:00"
+  encrypted_at: "2026-02-27T21:44:00+00:00"
+  dwell_time: 19 days from first exploit to encryption
+  final_deployment_window: under 90 minutes
+  hosts_in_scope: 8
+  ransomware_binaries:
+    - LB3.exe
+    - LB3_pass.exe
+
+evidence:
+  correlator: sysmon_host_activity
+  log: sample_logs/lockbit_intrusion_sysmon.json
+  # Only genuinely monotonic flags belong here. Credentials were dumped on two
+  # hosts and then *reused* elsewhere, so credential_access is deliberately not
+  # claimed as "every host past stage 3" - it isn't, and asserting it would be
+  # the exact kind of unearned claim these walkthroughs exist to avoid.
+  proves:
+    executed: 1
+    encrypted: 5
+
+status_model:
+  - id: safe
+    label: Safe
+    tone: good
+    max_stage: -1
+  # No Sysmon deployed - absence of evidence is not evidence of absence, so a
+  # containment cap never clears this.
+  - id: unknown
+    label: Unknown
+    tone: neutral
+    sticky: true
+  - id: at_risk
+    label: At Risk
+    tone: warn
+    max_stage: 1
+  - id: compromised
+    label: Compromised
+    tone: bad
+    max_stage: 4
+  - id: encrypted
+    label: Encrypted
+    tone: critical
+
+stages:
+  - id: exploit
+    index: 0
+    icon: "\U0001F4A5"
+    name: Internet-Facing Exploit
+    mitre: [T1190]
+    narrative: >-
+      A deserialisation flaw in an internet-facing message broker is exploited
+      to run code as the service account. The same broker is hit twice, 18 days
+      apart - the first visit establishes access, the second one uses it.
+    rule_ids: []
+    blind_spot_note: >-
+      The exploit rides the broker's own binary wire protocol, not HTTP - so no
+      WAF, reverse proxy or web server rule in the catalogue can see it. Nothing
+      is wrong with those rules; they are simply pointed at a protocol this
+      attack never touches. The realistic controls here are inventory and patch
+      latency, not detection: an unpatched broker reachable from the internet is
+      a finding long before it is an alert.
+    actions:
+      - id: lb-patch-broker
+        label: Patch the broker and subscribe it to a CVE feed with an SLA
+        phase: preparation
+      - id: lb-remove-exposure
+        label: Remove the service from the public internet; reach it over VPN only
+        phase: preparation
+      - id: lb-egress-filter
+        label: Default-deny outbound from DMZ servers, so exploitation can't fetch stage two
+        phase: preparation
+
+  - id: foothold
+    index: 1
+    icon: "\U0001F50C"
+    name: Foothold and C2
+    mitre: [T1105, T1218.010, T1571]
+    narrative: >-
+      The exploit runs certutil to pull a stager into %TEMP%, which then beacons
+      out to the operator on a non-standard high port. This is the first step
+      anything in the catalogue can actually see.
+    rule_ids: [SYS-4002, FW-7005, WEBPROXY-9003]
+    actions:
+      - id: lb-block-c2
+        label: Block the C2 address and port at the perimeter
+        phase: containment
+      - id: lb-isolate-broker
+        label: Isolate the broker host via EDR network containment
+        phase: containment
+      - id: lb-lolbin-policy
+        label: Restrict certutil and bitsadmin via WDAC/AppLocker
+        phase: preparation
+
+  - id: persistence
+    index: 2
+    icon: "\U0001F529"
+    name: Persistence and Privilege Escalation
+    mitre: [T1543.003, T1219, T1134]
+    narrative: >-
+      A remote access tool is installed as an auto-start service to survive
+      reboots, giving the operator a second channel that looks like legitimate
+      IT software. Privileges are raised to SYSTEM through a short-lived service.
+    rule_ids: [WIN-1006, SYS-4007]
+    blind_spot_note: >-
+      The privilege escalation itself uses a named pipe and a service that exists
+      for barely a second. WIN-1006 catches the service creation, but only if the
+      System log reaches the SIEM before the host is encrypted - on a host that
+      only forwards logs hourly, this detection exists and still arrives too late.
+    actions:
+      - id: lb-remove-rmm
+        label: Remove the unauthorised remote access tool and its service
+        phase: eradication
+      - id: lb-rmm-allowlist
+        label: Allow-list the one RMM product IT uses; alert on every other
+        phase: preparation
+      - id: lb-realtime-forwarding
+        label: Forward System and Security logs in real time, not on a schedule
+        phase: preparation
+
+  - id: evasion-credentials
+    index: 3
+    icon: "\U0001F513"
+    name: Defense Evasion and Credential Access
+    mitre: [T1070.001, T1003.001, T1562.001]
+    narrative: >-
+      Endpoint protection is switched off, the Security log is cleared, and LSASS
+      memory is read on two servers - handing over domain service account
+      credentials that unlock everything reached in the next stage.
+    rule_ids: [WIN-1007, SYS-4006]
+    actions:
+      - id: lb-reset-service-accounts
+        label: Reset every credential cached on the affected hosts, service accounts first
+        phase: eradication
+      - id: lb-tamper-protection
+        label: Enable tamper protection so endpoint protection can't be disabled locally
+        phase: preparation
+      - id: lb-credential-guard
+        label: Enable Credential Guard to put LSASS secrets out of reach
+        phase: preparation
+
+  - id: lateral-movement
+    index: 4
+    icon: "\U00002194"
+    name: Discovery and Lateral Movement
+    mitre: [T1046, T1021.001, T1550.002, T1059.003]
+    narrative: >-
+      A scanner sweeps the network for management ports, and the stolen service
+      account is replayed over RDP and remote service execution to reach the
+      file, backup and domain servers.
+    rule_ids: [FW-7001, FW-7003, WIN-1005, WIN-1008]
+    actions:
+      - id: lb-disable-accounts
+        label: Disable the compromised service accounts and revoke their sessions
+        phase: containment
+      - id: lb-segment-rdp
+        label: Segment RDP so servers accept it only from a jump host
+        phase: preparation
+      - id: lb-tier-admin
+        label: Tier administrative accounts so one server's credentials can't reach the domain
+        phase: preparation
+
+  - id: ransomware
+    index: 5
+    icon: "\U0001F512"
+    name: Ransomware Deployment
+    mitre: [T1486, T1490]
+    narrative: >-
+      Backups are encrypted first, then the file server. The whole deployment
+      takes under 90 minutes - after 19 days of quiet access that nobody acted on.
+    rule_ids: []
+    blind_spot_note: >-
+      There is deliberately no detection rule here. By the time a ransomware
+      binary executes, detection has already failed - an alert at this stage
+      tells you what you are about to lose, not how to keep it. Every response
+      action below is recovery, and all of the ones that would have mattered sit
+      in the five stages above. This stage exists to make that visible.
+    actions:
+      - id: lb-offline-backups
+        label: Keep offline, immutable backups that a domain admin cannot reach
+        phase: preparation
+      - id: lb-restore
+        label: Rebuild from known-good media and restore from immutable backups
+        phase: recovery
+      - id: lb-notify
+        label: Notify regulators, insurers and affected parties
+        phase: recovery
+
+entities:
+  - name: Message Broker
+    identifier: SRV-MQ01
+    furthest_stage: 3
+    status: compromised
+    note: >-
+      Patient zero - the exposed broker. Exploited twice 18 days apart, and the
+      first host to have its LSASS memory read.
+
+  - name: Exchange Server
+    identifier: SRV-EXCH01
+    furthest_stage: 3
+    status: compromised
+    note: >-
+      Endpoint protection disabled before tooling was staged, then credentials
+      harvested. Not encrypted - but every credential cached on it must be
+      treated as lost.
+
+  - name: File Server
+    identifier: SRV-FILE01
+    furthest_stage: 5
+    status: encrypted
+    note: >-
+      Carried the remote access tool and had its Security log cleared 17 days
+      before encryption. The cleared log was itself the loudest available signal,
+      and no one was watching for it.
+
+  - name: Backup Server
+    identifier: SRV-BACKUP01
+    furthest_stage: 5
+    status: encrypted
+    note: >-
+      Reached over RDP with the stolen service account and encrypted first,
+      deliberately - removing the recovery option before anyone noticed the rest.
+
+  - name: Domain Controller
+    identifier: SRV-DC01
+    furthest_stage: 4
+    status: compromised
+    note: >-
+      Used for discovery and authentication during lateral movement. Not
+      encrypted, but a domain controller in the blast radius means the whole
+      domain needs rebuilding regardless.
+
+  - name: Finance Workstation
+    identifier: WKSTN-042
+    furthest_stage: 4
+    status: compromised
+    note: >-
+      Reached by remote service execution running obfuscated PowerShell under a
+      service account - a workstation with no business reason to run either.
+
+  - name: Print Server
+    identifier: SRV-PRINT01
+    furthest_stage: -1
+    status: safe
+    note: >-
+      Never touched. It sits on a segment the stolen credentials had no rights
+      to, which is the only reason it survived.
+
+  - name: Reception Workstation
+    identifier: WKSTN-119
+    furthest_stage: 0
+    status: unknown
+    note: >-
+      No Sysmon deployed, so there is no telemetry for this host in the window.
+      It may be untouched or it may have been encrypted - the logs cannot say,
+      and no containment action changes that. Treat as compromised until proven
+      otherwise.

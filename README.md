@@ -115,29 +115,38 @@ Run the canned attack-to-detection simulation (password spray against
 dat simulate brute-force
 ```
 
-Run the phishing incident walkthrough - prints the kill-chain reach counts
-and per-user triage to the console, and (with `--out`) exports the
-interactive HTML version where you click stages to pick detection rules and
-response actions and watch who your plan would have saved:
+Browse and run the incident walkthroughs. Each one is a YAML file in
+`incidents/` - a kill chain, the hosts or mailboxes it touched, and the status
+ladder that incident uses - so adding one is a data file, not a code change:
 
 ```bash
-dat simulate phishing --out phishing_incident.html
-open phishing_incident.html
+dat incidents list
+dat incidents show activemq_lockbit
 ```
 
-The same incident is also exportable as pure data, for another front end to
-render its own view of it:
+`simulate incident` prints the same walkthrough and can export it. `--out`
+writes a self-contained interactive HTML page where you click stages to pick
+detection rules and response actions and watch who your plan would have saved;
+`--json` writes the same incident as pure data for another front end to render:
 
 ```bash
-dat simulate phishing --json incidents/phishing_account_takeover.json
+dat simulate incident phishing_account_takeover --out phishing_incident.html
+dat simulate incident activemq_lockbit --json exports/incidents/activemq_lockbit.json
 ```
 
-`incidents/` is generated output, committed so consumers need only a file copy
+`exports/` is generated output, committed so consumers need only a file copy
 (no Python) to pick it up. [SignalHunt](https://signalhunt.dev) syncs that
-directory and renders it as a React walkthrough at
-`/incidents/phishing-account-takeover`, so the incident is defined once here -
-in `phishing_incident.py` - and drawn twice. Re-run the command above and
-commit the result whenever the incident or the rules it references change.
+directory and renders each incident as a React walkthrough under `/incidents`,
+so an incident is defined once here and drawn twice. Re-run the export and
+commit the result whenever an incident or the rules it references change.
+
+Incidents currently modelled:
+
+- `phishing_account_takeover` - phishing to mailbox forwarding rule, 8 recipients
+- `activemq_lockbit` - exposed broker to domain-wide ransomware, 8 hosts. An
+  original simulation modelled on the publicly documented technique sequence in
+  [The DFIR Report's Apache ActiveMQ / LockBit case](https://thedfirreport.com/2026/02/23/apache-activemq-exploit-leads-to-lockbit-ransomware/);
+  their analysis is their own work and none of it is reproduced here.
 
 Run the whole rule set against a real/sample log file:
 

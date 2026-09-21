@@ -1,5 +1,12 @@
 {
-  "campaign": {
+  "id": "phishing_account_takeover",
+  "slug": "phishing_account_takeover",
+  "title": "Phishing to Account Takeover",
+  "summary": "A password-expiry phishing campaign against 8 recipients, traced from delivery to a malicious inbox forwarding rule.",
+  "icon": "🎣",
+  "entity_label": "Mailbox",
+  "source": {},
+  "scenario": {
     "name": "Password Expiry Phishing Campaign",
     "sender_display_name": "IT Helpdesk",
     "sender_address": "it-support@corp-secure-verify.com",
@@ -9,11 +16,49 @@
     "sent_at": "2026-04-02T08:45:00+00:00",
     "recipients": 8
   },
+  "status_model": [
+    {
+      "id": "safe",
+      "label": "Safe",
+      "tone": "good",
+      "max_stage": 0,
+      "sticky": false
+    },
+    {
+      "id": "unknown",
+      "label": "Unknown",
+      "tone": "neutral",
+      "max_stage": null,
+      "sticky": true
+    },
+    {
+      "id": "at_risk",
+      "label": "At Risk",
+      "tone": "warn",
+      "max_stage": 1,
+      "sticky": false
+    },
+    {
+      "id": "compromised",
+      "label": "Compromised",
+      "tone": "bad",
+      "max_stage": 3,
+      "sticky": false
+    },
+    {
+      "id": "compromised_active",
+      "label": "Compromised (Active)",
+      "tone": "critical",
+      "max_stage": null,
+      "sticky": false
+    }
+  ],
   "stages": [
     {
       "id": "delivery",
       "index": 0,
       "name": "Email Delivered",
+      "icon": "📧",
       "mitre": [
         "T1566.002"
       ],
@@ -73,6 +118,7 @@
       "id": "click",
       "index": 1,
       "name": "Link Clicked",
+      "icon": "🖱",
       "mitre": [
         "T1204.001"
       ],
@@ -132,6 +178,7 @@
       "id": "credentials",
       "index": 2,
       "name": "Credentials Entered",
+      "icon": "🔑",
       "mitre": [
         "T1598.003",
         "T1556"
@@ -159,6 +206,7 @@
       "id": "attacker-logon",
       "index": 3,
       "name": "Attacker Signs In",
+      "icon": "🕵",
       "mitre": [
         "T1078",
         "T1078.004"
@@ -388,6 +436,7 @@
       "id": "post-compromise",
       "index": 4,
       "name": "Post-Compromise Action",
+      "icon": "📤",
       "mitre": [
         "T1114.003",
         "T1098.002"
@@ -452,194 +501,153 @@
       ]
     }
   ],
-  "users": [
+  "entities": [
     {
       "name": "Tariq Nguyen",
-      "mailbox": "tnguyen@corp.com",
+      "identifier": "tnguyen@corp.com",
       "furthest_stage": -1,
       "status": "safe",
       "note": "Email gateway sandboxing detonated the link and blocked delivery outright.",
-      "proxy_evidence": {
+      "evidence": {
         "clicked": false,
         "credentials_entered": false,
+        "caption": "web_proxy hits against corp-secure-verify.com",
         "events": []
       }
     },
     {
       "name": "Asha Smith",
-      "mailbox": "asmith@corp.com",
+      "identifier": "asmith@corp.com",
       "furthest_stage": 0,
       "status": "safe",
       "note": "Reported the email via the Report Phishing button within 4 minutes of delivery.",
-      "proxy_evidence": {
+      "evidence": {
         "clicked": false,
         "credentials_entered": false,
+        "caption": "web_proxy hits against corp-secure-verify.com",
         "events": []
       }
     },
     {
       "name": "Jamie Doe",
-      "mailbox": "jdoe@corp.com",
+      "identifier": "jdoe@corp.com",
       "furthest_stage": 0,
       "status": "safe",
       "note": "Read the subject line, recognized it as suspicious, and deleted it without clicking.",
-      "proxy_evidence": {
+      "evidence": {
         "clicked": false,
         "credentials_entered": false,
+        "caption": "web_proxy hits against corp-secure-verify.com",
         "events": []
       }
     },
     {
       "name": "Kayla Garcia",
-      "mailbox": "kgarcia@corp.com",
+      "identifier": "kgarcia@corp.com",
       "furthest_stage": 0,
       "status": "unknown",
       "note": "No corporate proxy/EDR telemetry for this user in the window - the email was opened on an unmanaged personal device. Treat as compromised until confirmed otherwise.",
-      "proxy_evidence": {
+      "evidence": {
         "clicked": false,
         "credentials_entered": false,
+        "caption": "web_proxy hits against corp-secure-verify.com",
         "events": []
       }
     },
     {
       "name": "Ben Wong",
-      "mailbox": "bwong@corp.com",
+      "identifier": "bwong@corp.com",
       "furthest_stage": 1,
       "status": "at_risk",
       "note": "Clicked the link, saw the fake login page, got suspicious and closed the tab without entering anything.",
-      "proxy_evidence": {
+      "evidence": {
         "clicked": true,
         "credentials_entered": false,
+        "caption": "web_proxy hits against corp-secure-verify.com",
         "events": [
           {
             "timestamp": "2026-04-02T08:52:10+00:00",
-            "src_ip": "10.0.2.14",
-            "user": "bwong",
-            "method": "GET",
-            "domain": "corp-secure-verify.com",
-            "url": "https://corp-secure-verify.com/reset",
-            "category": "newly-registered-domain",
-            "action": "allowed",
-            "status_code": 200,
-            "bytes_out": 480,
-            "bytes_in": 9200
+            "headline": "GET https://corp-secure-verify.com/reset",
+            "summary": "page load only",
+            "notable": false
           }
         ]
       }
     },
     {
       "name": "Liam Jackson",
-      "mailbox": "ljackson@corp.com",
+      "identifier": "ljackson@corp.com",
       "furthest_stage": 2,
       "status": "compromised",
       "note": "Entered credentials on the fake page; no follow-on sign-in observed yet in this window - assume the credential is live and unused so far, reset immediately.",
-      "proxy_evidence": {
+      "evidence": {
         "clicked": true,
         "credentials_entered": true,
+        "caption": "web_proxy hits against corp-secure-verify.com",
         "events": [
           {
             "timestamp": "2026-04-02T08:58:44+00:00",
-            "src_ip": "10.0.2.31",
-            "user": "ljackson",
-            "method": "GET",
-            "domain": "corp-secure-verify.com",
-            "url": "https://corp-secure-verify.com/reset",
-            "category": "newly-registered-domain",
-            "action": "allowed",
-            "status_code": 200,
-            "bytes_out": 480,
-            "bytes_in": 9200
+            "headline": "GET https://corp-secure-verify.com/reset",
+            "summary": "page load only",
+            "notable": false
           },
           {
             "timestamp": "2026-04-02T08:58:57+00:00",
-            "src_ip": "10.0.2.31",
-            "user": "ljackson",
-            "method": "POST",
-            "domain": "corp-secure-verify.com",
-            "url": "https://corp-secure-verify.com/reset",
-            "category": "newly-registered-domain",
-            "action": "allowed",
-            "status_code": 200,
-            "bytes_out": 640,
-            "bytes_in": 3100
+            "headline": "POST https://corp-secure-verify.com/reset",
+            "summary": "form submission - payload size says credentials were entered",
+            "notable": true
           }
         ]
       }
     },
     {
       "name": "Raj Patel",
-      "mailbox": "rpatel@corp.com",
+      "identifier": "rpatel@corp.com",
       "furthest_stage": 2,
       "status": "compromised",
       "note": "Entered credentials; the attacker's follow-on sign-in from Russia was blocked by an MFA challenge it couldn't satisfy. Credentials are burned but the account itself was not taken over.",
-      "proxy_evidence": {
+      "evidence": {
         "clicked": true,
         "credentials_entered": true,
+        "caption": "web_proxy hits against corp-secure-verify.com",
         "events": [
           {
             "timestamp": "2026-04-02T09:01:05+00:00",
-            "src_ip": "10.0.2.47",
-            "user": "rpatel",
-            "method": "GET",
-            "domain": "corp-secure-verify.com",
-            "url": "https://corp-secure-verify.com/reset",
-            "category": "newly-registered-domain",
-            "action": "allowed",
-            "status_code": 200,
-            "bytes_out": 480,
-            "bytes_in": 9200
+            "headline": "GET https://corp-secure-verify.com/reset",
+            "summary": "page load only",
+            "notable": false
           },
           {
             "timestamp": "2026-04-02T09:01:19+00:00",
-            "src_ip": "10.0.2.47",
-            "user": "rpatel",
-            "method": "POST",
-            "domain": "corp-secure-verify.com",
-            "url": "https://corp-secure-verify.com/reset",
-            "category": "newly-registered-domain",
-            "action": "allowed",
-            "status_code": 200,
-            "bytes_out": 655,
-            "bytes_in": 3100
+            "headline": "POST https://corp-secure-verify.com/reset",
+            "summary": "form submission - payload size says credentials were entered",
+            "notable": true
           }
         ]
       }
     },
     {
       "name": "Maria Chen",
-      "mailbox": "mchen@corp.com",
+      "identifier": "mchen@corp.com",
       "furthest_stage": 4,
       "status": "compromised_active",
       "note": "Entered credentials; the attacker signed in 14 minutes later from Nigeria and immediately added an external mailbox forwarding rule.",
-      "proxy_evidence": {
+      "evidence": {
         "clicked": true,
         "credentials_entered": true,
+        "caption": "web_proxy hits against corp-secure-verify.com",
         "events": [
           {
             "timestamp": "2026-04-02T09:00:12+00:00",
-            "src_ip": "10.0.2.52",
-            "user": "mchen",
-            "method": "GET",
-            "domain": "corp-secure-verify.com",
-            "url": "https://corp-secure-verify.com/reset",
-            "category": "newly-registered-domain",
-            "action": "allowed",
-            "status_code": 200,
-            "bytes_out": 480,
-            "bytes_in": 9200
+            "headline": "GET https://corp-secure-verify.com/reset",
+            "summary": "page load only",
+            "notable": false
           },
           {
             "timestamp": "2026-04-02T09:00:28+00:00",
-            "src_ip": "10.0.2.52",
-            "user": "mchen",
-            "method": "POST",
-            "domain": "corp-secure-verify.com",
-            "url": "https://corp-secure-verify.com/reset",
-            "category": "newly-registered-domain",
-            "action": "allowed",
-            "status_code": 200,
-            "bytes_out": 648,
-            "bytes_in": 3100
+            "headline": "POST https://corp-secure-verify.com/reset",
+            "summary": "form submission - payload size says credentials were entered",
+            "notable": true
           }
         ]
       }

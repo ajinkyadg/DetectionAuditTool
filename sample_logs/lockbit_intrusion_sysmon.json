@@ -1,0 +1,100 @@
+[
+  {
+    "timestamp": "2026-02-08T22:41:10+00:00",
+    "Computer": "SRV-MQ01",
+    "EventID": 1,
+    "Image": "C:\\Windows\\Temp\\uFSyLszKsuR.exe",
+    "ParentImage": "C:\\Program Files\\Java\\jre\\bin\\java.exe",
+    "note": "Metasploit stager dropped by the ActiveMQ java process"
+  },
+  {
+    "timestamp": "2026-02-08T22:41:12+00:00",
+    "Computer": "SRV-MQ01",
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\certutil.exe",
+    "ParentImage": "C:\\Program Files\\Java\\jre\\bin\\java.exe",
+    "note": "certutil fetching the stager - the first detectable step (SYS-4002)"
+  },
+  {
+    "timestamp": "2026-02-08T22:58:33+00:00",
+    "Computer": "SRV-MQ01",
+    "EventID": 10,
+    "Image": "C:\\Windows\\Temp\\uFSyLszKsuR.exe",
+    "TargetImage": "C:\\Windows\\System32\\lsass.exe",
+    "GrantedAccess": "0x1010",
+    "note": "LSASS read - service account credentials harvested (SYS-4006)"
+  },
+  {
+    "timestamp": "2026-02-09T01:14:02+00:00",
+    "Computer": "SRV-EXCH01",
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\SystemSettingsAdminFlows.exe",
+    "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+    "note": "Defender disabled ahead of tooling being staged"
+  },
+  {
+    "timestamp": "2026-02-09T01:22:40+00:00",
+    "Computer": "SRV-EXCH01",
+    "EventID": 10,
+    "Image": "C:\\Windows\\Temp\\uFSyLszKsuR.exe",
+    "TargetImage": "C:\\Windows\\System32\\lsass.exe",
+    "GrantedAccess": "0x1010",
+    "note": "LSASS read on a second host (SYS-4006)"
+  },
+  {
+    "timestamp": "2026-02-10T02:31:50+00:00",
+    "Computer": "SRV-FILE01",
+    "EventID": 1,
+    "Image": "C:\\Program Files (x86)\\AnyDesk\\AnyDesk.exe",
+    "ParentImage": "C:\\Windows\\System32\\services.exe",
+    "note": "AnyDesk installed as a resilient second channel (SYS-4007 / WIN-1006)"
+  },
+  {
+    "timestamp": "2026-02-10T04:02:11+00:00",
+    "Computer": "SRV-FILE01",
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\wevtutil.exe",
+    "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+    "note": "Security log cleared (WIN-1007)"
+  },
+  {
+    "timestamp": "2026-02-27T20:12:44+00:00",
+    "Computer": "SRV-DC01",
+    "EventID": 1,
+    "Image": "C:\\Users\\Public\\advanced_ip_scanner.exe",
+    "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+    "note": "Advanced IP Scanner sweeping 22/135/139/445/3389/5985/8080 (FW-7001)"
+  },
+  {
+    "timestamp": "2026-02-27T20:40:09+00:00",
+    "Computer": "WKSTN-042",
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "ParentImage": "C:\\Windows\\System32\\services.exe",
+    "note": "Obfuscated PowerShell payload executed via remote service (WIN-1008)"
+  },
+  {
+    "timestamp": "2026-02-27T21:31:19+00:00",
+    "Computer": "SRV-BACKUP01",
+    "EventID": 1,
+    "Image": "C:\\Windows\\System32\\mstsc.exe",
+    "ParentImage": "C:\\Windows\\explorer.exe",
+    "note": "Inbound RDP using harvested svc_backup credentials"
+  },
+  {
+    "timestamp": "2026-02-27T21:44:55+00:00",
+    "Computer": "SRV-BACKUP01",
+    "EventID": 1,
+    "Image": "C:\\Users\\Public\\LB3_pass.exe",
+    "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+    "note": "Backups encrypted first, to remove the recovery option"
+  },
+  {
+    "timestamp": "2026-02-27T21:48:03+00:00",
+    "Computer": "SRV-FILE01",
+    "EventID": 1,
+    "Image": "C:\\Users\\Public\\LB3.exe",
+    "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+    "note": "LockBit deployed - file server encrypted"
+  }
+]
